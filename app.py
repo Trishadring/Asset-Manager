@@ -312,50 +312,84 @@ c3.metric("Picked", picked_total)
 st.progress(picked_total / max(1, total_cards))
 
 
+def _toggle_pick(sk: str) -> None:
+    st.session_state.picked[sk] = not st.session_state.picked.get(sk, False)
+
+
+def _set_picks(state_keys: list[str], value: bool) -> None:
+    for sk in state_keys:
+        st.session_state.picked[sk] = value
+
+
 def render_card(key: tuple, entry: dict) -> None:
     card = entry.get("scryfall") or {}
     img = card_image(card)
     qty = entry["quantity"]
     state_key = "|".join(str(x) for x in key)
     is_picked = st.session_state.picked.get(state_key, False)
-    opacity = 0.3 if is_picked else 1.0
+    opacity = 0.35 if is_picked else 1.0
+    is_foil = entry["finish"] in ("foil", "etched")
+
+    foil_style = (
+        "padding:4px;border-radius:14px;"
+        "background:linear-gradient(135deg,#ffd34d,#ff6ec7,#7afcff,#a6ff7a,#ffd34d);"
+        "background-size:300% 300%;"
+        if is_foil else "padding:0;"
+    )
 
     if img:
         st.markdown(
             f"""
-            <div style="position:relative;opacity:{opacity};transition:opacity .2s;">
-              <img src="{img}" style="width:100%;border-radius:12px;display:block;" />
-              <div style="position:absolute;top:8px;left:8px;
-                          background:#111;color:#fff;font-weight:800;
-                          padding:6px 12px;border-radius:8px;font-size:18px;
-                          border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);">
-                PICK: {qty}
-              </div>
+            <div style="opacity:{opacity};transition:opacity .2s;{foil_style}">
+              <img src="{img}" style="width:100%;border-radius:10px;display:block;" />
             </div>
             """,
             unsafe_allow_html=True,
         )
     else:
-        st.markdown(f"**{entry['name']}** — PICK: {qty}")
+        st.markdown(f"**{entry['name']}**")
 
     label = entry["name"]
-    set_info = f"{entry['set'].upper()} · #{entry['collector_number']} · {entry['finish']}"
-    if is_picked:
-        st.markdown(
-            f"<div style='opacity:.45'><s>{label}</s><br><small><s>{set_info}</s></small></div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(f"{label}<br><small style='color:#888'>{set_info}</small>",
-                    unsafe_allow_html=True)
-    st.checkbox("Picked", key=f"pick-{state_key}",
-                value=is_picked,
-                on_change=lambda sk=state_key: st.session_state.picked.update(
-                    {sk: not st.session_state.picked.get(sk, False)}))
+    finish_tag = " ✨FOIL" if entry["finish"] == "foil" else (
+        " ✨ETCHED" if entry["finish"] == "etched" else "")
+    set_info = f"{entry['set'].upper()} · #{entry['collector_number']}{finish_tag}"
+    name_html = f"<s>{label}</s>" if is_picked else f"<b>{label}</b>"
+    info_html = f"<s>{set_info}</s>" if is_picked else set_info
+    pick_color = "#666" if is_picked else "#0a7d2c"
+    st.markdown(
+        f"""
+        <div style='line-height:1.25;margin-top:6px;
+                    opacity:{0.55 if is_picked else 1}'>
+          {name_html}<br>
+          <span style='color:{pick_color};font-weight:700'>PICK: {qty}</span>
+          <span style='color:#888;font-size:.85em'> · {info_html}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    btn_label = "✓ Picked (click to undo)" if is_picked else "Mark Picked"
+    st.button(btn_label, key=f"pick-{state_key}",
+              use_container_width=True,
+              on_click=_toggle_pick, args=(state_key,))
 
 
-def render_grid(cards: list[tuple[tuple, dict, str]]) -> None:
+def _grid_state_keys(cards: list[tuple[tuple, dict, str]]) -> list[str]:
+    return ["|".join(str(x) for x in c[0]) for c in cards]
+
+
+def render_grid(cards: list[tuple[tuple, dict, str]],
+                bulk_id: str | None = None) -> None:
     cards = sorted(cards, key=lambda c: c[2])
+    if bulk_id:
+        sks = _grid_state_keys(cards)
+        all_picked = sks and all(st.session_state.picked.get(s) for s in sks)
+        b1, b2 = st.columns([1, 1])
+        b1.button("✓ Mark all picked", key=f"all-{bulk_id}",
+                  use_container_width=True, disabled=bool(all_picked),
+                  on_click=_set_picks, args=(sks, True))
+        b2.button("Reset section", key=f"reset-{bulk_id}",
+                  use_container_width=True,
+                  on_click=_set_picks, args=(sks, False))
     cols = st.columns(4)
     for i, (key, entry, _) in enumerate(cards):
         with cols[i % 4]:
@@ -382,17 +416,17 @@ for section in SECTION_ORDER:
         ordered = sorted(subs.keys())
 
     for sub in ordered:
-        st.subheader(f"{section} — {sub}")
+        st.subheader(sub)
         if section == "Spells":
             by_type: dict[str, list] = defaultdict(list)
             for item in subs[sub]:
-                # sort_key looks like "02-Instant-Path to Exile"
                 parts = item[2].split("-", 2)
                 ptype = parts[1] if len(parts) >= 2 else "Other"
                 by_type[ptype].append(item)
             for ptype in TYPE_ORDER:
                 if ptype in by_type:
                     st.markdown(f"**{ptype}s**")
-                    render_grid(by_type[ptype])
+                    render_grid(by_type[ptype],
+                                bulk_id=f"{section}-{sub}-{ptype}")
         else:
-            render_grid(subs[sub])
+            render_grid(subs[sub], bulk_id=f"{section}-{sub}")
