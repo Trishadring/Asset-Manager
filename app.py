@@ -383,4 +383,16 @@ for section in SECTION_ORDER:
 
     for sub in ordered:
         st.subheader(f"{section} — {sub}")
-        render_grid(subs[sub])
+        if section == "Spells":
+            by_type: dict[str, list] = defaultdict(list)
+            for item in subs[sub]:
+                # sort_key looks like "02-Instant-Path to Exile"
+                parts = item[2].split("-", 2)
+                ptype = parts[1] if len(parts) >= 2 else "Other"
+                by_type[ptype].append(item)
+            for ptype in TYPE_ORDER:
+                if ptype in by_type:
+                    st.markdown(f"**{ptype}s**")
+                    render_grid(by_type[ptype])
+        else:
+            render_grid(subs[sub])
