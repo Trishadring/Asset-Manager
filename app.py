@@ -89,6 +89,24 @@ def fetch_manapool_orders(api_key: str, seller_email: str) -> list[dict]:
     return detailed
 
 
+def mark_order_shipped(api_key: str, email: str, order_id: str,
+                       tracking_number: str = "") -> dict:
+    """PUT fulfillment to mark an order shipped via USPS."""
+    body: dict[str, Any] = {"status": "shipped", "tracking_company": "USPS"}
+    if tracking_number.strip():
+        body["tracking_number"] = tracking_number.strip()
+        body["tracking_url"] = (
+            f"https://tools.usps.com/go/TrackConfirmAction?tLabels={tracking_number.strip()}"
+        )
+    r = requests.put(
+        f"{MANAPOOL_BASE}/seller/orders/{order_id}/fulfillment",
+        headers={**_mp_headers(api_key, email), "Content-Type": "application/json"},
+        json=body, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
     """Combine all orders into one master list, summing quantities for identical cards.
     Identity = (Name, Set, Collector Number, Finish)."""
@@ -263,6 +281,12 @@ if "master" not in st.session_state:
     st.session_state.master = {}
 if "picked" not in st.session_state:
     st.session_state.picked = {}
+if "orders" not in st.session_state:
+    st.session_state.orders = []
+if "phase" not in st.session_state:
+    st.session_state.phase = "pick"
+if "shipped" not in st.session_state:
+    st.session_state.shipped = {}
 
 if fetch_btn:
     with st.spinner("Fetching orders from Manapool…"):
@@ -271,8 +295,11 @@ if fetch_btn:
         except Exception as e:
             st.error(f"Failed to fetch orders: {e}")
             orders = []
+    st.session_state.orders = orders
     st.session_state.master = consolidate_orders(orders)
     st.session_state.picked = {}
+    st.session_state.shipped = {}
+    st.session_state.phase = "pick"
     st.success(f"Loaded {len(orders)} orders → {len(st.session_state.master)} unique cards.")
 
     # Enrich
@@ -305,11 +332,26 @@ total_cards = sum(e["quantity"] for e in master.values())
 picked_total = sum(master[k]["quantity"] for k in st.session_state.picked
                    if st.session_state.picked.get(k) and k in master)
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 c1.metric("Unique cards", len(master))
 c2.metric("Total to pick", total_cards)
 c3.metric("Picked", picked_total)
+c4.metric("Orders", len(st.session_state.orders))
 st.progress(picked_total / max(1, total_cards))
+
+phase = st.session_state.phase
+nav1, nav2 = st.columns(2)
+if nav1.button("🃏 Pick mode",
+               type="primary" if phase == "pick" else "secondary",
+               use_container_width=True):
+    st.session_state.phase = "pick"
+    st.rerun()
+if nav2.button("📦 Pack & Ship mode",
+               type="primary" if phase == "pack" else "secondary",
+               use_container_width=True):
+    st.session_state.phase = "pack"
+    st.rerun()
+st.divider()
 
 
 def _toggle_pick(sk: str) -> None:
@@ -394,6 +436,91 @@ def render_grid(cards: list[tuple[tuple, dict, str]],
     for i, (key, entry, _) in enumerate(cards):
         with cols[i % 4]:
             render_card(key, entry)
+
+
+def render_pack_view() -> None:
+    orders = st.session_state.orders or []
+    if not orders:
+        st.info("No orders to pack.")
+        return
+
+    pending = [o for o in orders if not st.session_state.shipped.get(o.get("id"))]
+    done = [o for o in orders if st.session_state.shipped.get(o.get("id"))]
+    st.markdown(f"**{len(pending)} to pack** · {len(done)} shipped")
+
+    for order in pending:
+        oid = order.get("id", "")
+        addr = order.get("shipping_address") or {}
+        label = order.get("label") or oid[:8]
+        items = order.get("items") or []
+
+        with st.container(border=True):
+            top_l, top_r = st.columns([2, 1])
+            with top_l:
+                st.markdown(f"### Order `{label}`")
+                lines = [
+                    addr.get("name", ""),
+                    addr.get("line1", ""),
+                    addr.get("line2") or "",
+                    addr.get("line3") or "",
+                    f"{addr.get('city','')}, {addr.get('state','')} "
+                    f"{addr.get('postal_code','')}",
+                    addr.get("country", ""),
+                ]
+                st.code("\n".join(l for l in lines if l), language=None)
+                ship_method = order.get("shipping_method", "")
+                st.caption(f"Required shipping: {ship_method.replace('_', ' ').title()}")
+            with top_r:
+                tracking = st.text_input("USPS tracking #",
+                                         key=f"trk-{oid}",
+                                         placeholder="Optional")
+                if st.button("✓ Mark shipped via USPS",
+                             key=f"ship-{oid}",
+                             type="primary",
+                             use_container_width=True):
+                    try:
+                        mark_order_shipped(api_key, seller_email, oid, tracking)
+                        st.session_state.shipped[oid] = True
+                        st.success("Shipped!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to update Manapool: {e}")
+
+            # Card images for this order
+            cols = st.columns(6)
+            i = 0
+            for item in items:
+                single = ((item.get("product") or {}).get("single") or {})
+                if not single:
+                    continue
+                key = (single.get("name", ""), (single.get("set") or "").lower(),
+                       str(single.get("number") or ""),
+                       FINISH_LABELS.get(single.get("finish_id", ""), "nonfoil"))
+                entry = master.get(key, {})
+                img = card_image(entry.get("scryfall") or {})
+                qty = int(item.get("quantity") or 1)
+                with cols[i % 6]:
+                    if img:
+                        st.markdown(
+                            f"<img src='{img}' style='width:100%;border-radius:8px;'/>"
+                            f"<div style='text-align:center;font-weight:700'>×{qty}</div>"
+                            f"<div style='text-align:center;font-size:.8em;color:#888'>"
+                            f"{single.get('name','')}</div>",
+                            unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"**{single.get('name','')}** ×{qty}")
+                i += 1
+
+    if done:
+        with st.expander(f"✅ Shipped ({len(done)})"):
+            for o in done:
+                st.markdown(f"- `{o.get('label') or o.get('id','')[:8]}` — "
+                            f"{(o.get('shipping_address') or {}).get('name','')}")
+
+
+if phase == "pack":
+    render_pack_view()
+    st.stop()
 
 
 # Render sections
