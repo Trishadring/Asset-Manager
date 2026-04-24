@@ -263,10 +263,8 @@ st.caption("Pick & pack helper for Manapool sellers — sorted the way your phys
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("MANAPOOL_API_KEY", type="password",
-                            value=os.environ.get("MANAPOOL_API_KEY", ""),
                             help="Your Manapool seller API key.")
     seller_email = st.text_input("Seller email",
-                                 value=os.environ.get("MANAPOOL_EMAIL", ""),
                                  help="The email on your Manapool account.")
     fetch_btn = st.button("Fetch Paid / Unshipped Orders", type="primary",
                           use_container_width=True,
