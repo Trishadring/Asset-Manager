@@ -83,7 +83,8 @@ def fetch_manapool_orders(api_key: str, seller_email: str) -> list[dict]:
         r = requests.get(f"{MANAPOOL_BASE}/seller/orders/{oid}",
                          headers=headers, timeout=30)
         if r.status_code == 200:
-            detailed.append(r.json())
+            payload = r.json() or {}
+            detailed.append(payload.get("order", payload))
         time.sleep(0.05)
     return detailed
 
