@@ -31,46 +31,61 @@ BASIC_LAND_NAMES = {"Plains", "Island", "Swamp", "Mountain", "Forest",
 # --------------------------------------------------------------------------- #
 # Manapool                                                                    #
 # --------------------------------------------------------------------------- #
-def fetch_manapool_orders(api_key: str, seller_email: str | None = None) -> list[dict]:
-    """Fetch all Paid/Unshipped orders from Manapool."""
-    headers = {"Accept": "application/json"}
-    auth = None
-    if seller_email:
-        auth = (seller_email, api_key)
-    else:
-        headers["Authorization"] = f"Bearer {api_key}"
+FINISH_LABELS = {"NF": "nonfoil", "FO": "foil", "EF": "etched"}
 
-    orders: list[dict] = []
-    # Try the documented seller orders endpoint
-    url = f"{MANAPOOL_BASE}/seller/orders"
-    params = {"status": "paid_unshipped", "per_page": 100, "page": 1}
 
+def _mp_headers(api_key: str, email: str) -> dict[str, str]:
+    return {
+        "Accept": "application/json",
+        "X-ManaPool-Email": email,
+        "X-ManaPool-Access-Token": api_key,
+    }
+
+
+def fetch_manapool_orders(api_key: str, seller_email: str) -> list[dict]:
+    """Fetch all Paid/Unshipped (unfulfilled) seller orders from Manapool."""
+    if not seller_email:
+        raise RuntimeError("Manapool requires your seller email along with the API token.")
+    headers = _mp_headers(api_key, seller_email)
+    list_url = f"{MANAPOOL_BASE}/seller/orders"
+
+    summaries: list[dict] = []
+    limit, offset = 100, 0
     while True:
-        resp = requests.get(url, headers=headers, params=params, auth=auth, timeout=30)
+        resp = requests.get(
+            list_url,
+            headers=headers,
+            params={"is_fulfilled": "false", "limit": limit, "offset": offset},
+            timeout=30,
+        )
         if resp.status_code == 401:
-            raise RuntimeError("Manapool authentication failed. Check your API key (and seller email if required).")
-        if resp.status_code == 404:
-            # Fall back to alternative path
-            alt = f"{MANAPOOL_BASE}/orders"
-            resp = requests.get(alt, headers=headers, params=params, auth=auth, timeout=30)
+            raise RuntimeError(
+                "Manapool authentication failed. Check that the API token "
+                "and seller email are correct."
+            )
         resp.raise_for_status()
-        payload = resp.json()
-
-        page_orders = payload.get("orders") or payload.get("data") or payload
-        if isinstance(page_orders, dict):
-            page_orders = page_orders.get("orders", [])
-        if not page_orders:
+        page = (resp.json() or {}).get("orders", [])
+        if not page:
             break
-        orders.extend(page_orders)
-
-        # Pagination — stop when we got fewer than per_page
-        if len(page_orders) < params["per_page"]:
+        summaries.extend(page)
+        if len(page) < limit:
             break
-        params["page"] += 1
-        if params["page"] > 50:
+        offset += limit
+        if offset > 5000:
             break
 
-    return orders
+    # Fetch full order details (which include items) for each summary
+    detailed: list[dict] = []
+    for s in summaries:
+        oid = s.get("id")
+        if not oid:
+            continue
+        r = requests.get(f"{MANAPOOL_BASE}/seller/orders/{oid}",
+                         headers=headers, timeout=30)
+        if r.status_code == 200:
+            detailed.append(r.json())
+        time.sleep(0.05)
+    return detailed
 
 
 def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
@@ -78,20 +93,17 @@ def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
     Identity = (Name, Set, Collector Number, Finish)."""
     master: dict[tuple, dict] = {}
     for order in orders:
-        items = (order.get("items") or order.get("line_items") or
-                 order.get("order_items") or [])
-        for item in items:
-            name = (item.get("name") or item.get("card_name") or
-                    item.get("title") or "").strip()
-            set_code = (item.get("set") or item.get("set_code") or
-                        item.get("set_abbreviation") or "").strip().lower()
-            collector = str(item.get("collector_number") or
-                            item.get("number") or "").strip()
-            finish = (item.get("finish") or item.get("foil") or "nonfoil")
-            if isinstance(finish, bool):
-                finish = "foil" if finish else "nonfoil"
-            finish = str(finish).lower()
-            qty = int(item.get("quantity") or item.get("qty") or 1)
+        for item in order.get("items", []) or []:
+            product = item.get("product") or {}
+            single = product.get("single") or {}
+            if not single:
+                continue  # skip sealed
+            name = (single.get("name") or "").strip()
+            set_code = (single.get("set") or "").strip().lower()
+            collector = str(single.get("number") or "").strip()
+            finish = FINISH_LABELS.get(single.get("finish_id", ""), "nonfoil")
+            scryfall_id = single.get("scryfall_id")
+            qty = int(item.get("quantity") or 1)
             if not name:
                 continue
             key = (name, set_code, collector, finish)
@@ -104,6 +116,7 @@ def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
                     "collector_number": collector,
                     "finish": finish,
                     "quantity": qty,
+                    "scryfall_id": scryfall_id,
                 }
     return master
 
@@ -112,16 +125,20 @@ def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
 # Scryfall                                                                    #
 # --------------------------------------------------------------------------- #
 @st.cache_data(show_spinner=False)
-def scryfall_lookup(name: str, set_code: str, collector: str) -> dict | None:
+def scryfall_lookup(name: str, set_code: str, collector: str,
+                    scryfall_id: str | None = None) -> dict | None:
     """Lookup a card on Scryfall, with caching. Rate limited to ~10/sec."""
     time.sleep(0.1)  # Scryfall asks for 50-100ms between requests
     try:
-        if set_code and collector:
-            url = f"{SCRYFALL_BASE}/cards/{set_code}/{collector}"
-            r = requests.get(url, timeout=15)
+        if scryfall_id:
+            r = requests.get(f"{SCRYFALL_BASE}/cards/{scryfall_id}", timeout=15)
             if r.status_code == 200:
                 return r.json()
-        # Fallback: named search
+        if set_code and collector:
+            r = requests.get(f"{SCRYFALL_BASE}/cards/{set_code}/{collector}",
+                             timeout=15)
+            if r.status_code == 200:
+                return r.json()
         params: dict[str, Any] = {"exact": name}
         if set_code:
             params["set"] = set_code
@@ -229,11 +246,12 @@ with st.sidebar:
     api_key = st.text_input("MANAPOOL_API_KEY", type="password",
                             value=os.environ.get("MANAPOOL_API_KEY", ""),
                             help="Your Manapool seller API key.")
-    seller_email = st.text_input("Seller email (if required for Basic auth)",
+    seller_email = st.text_input("Seller email",
                                  value=os.environ.get("MANAPOOL_EMAIL", ""),
-                                 help="Leave blank to use Bearer auth.")
+                                 help="The email on your Manapool account.")
     fetch_btn = st.button("Fetch Paid / Unshipped Orders", type="primary",
-                          use_container_width=True, disabled=not api_key)
+                          use_container_width=True,
+                          disabled=not (api_key and seller_email))
     st.divider()
     if st.button("Clear card cache", use_container_width=True):
         scryfall_lookup.clear()
@@ -261,7 +279,8 @@ if fetch_btn:
     items = list(st.session_state.master.items())
     for i, (key, entry) in enumerate(items):
         entry["scryfall"] = scryfall_lookup(entry["name"], entry["set"],
-                                            entry["collector_number"])
+                                            entry["collector_number"],
+                                            entry.get("scryfall_id"))
         progress.progress((i + 1) / max(1, len(items)),
                           text=f"Enriching {i + 1}/{len(items)}…")
     progress.empty()
