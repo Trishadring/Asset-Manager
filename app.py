@@ -329,8 +329,12 @@ SPELL_SUB_ORDER = ["White", "Blue", "Black", "Red", "Green", "Multicolor", "Colo
 ARTIFACT_SUB_ORDER = ["Mana Rocks", "Equipment / Vehicles", "Artifact Creatures", "Utility Artifacts"]
 
 total_cards = sum(e["quantity"] for e in master.values())
-picked_total = sum(master[k]["quantity"] for k in st.session_state.picked
-                   if st.session_state.picked.get(k) and k in master)
+_state_to_key = {"|".join(str(x) for x in k): k for k in master}
+picked_total = sum(
+    master[_state_to_key[sk]]["quantity"]
+    for sk, v in st.session_state.picked.items()
+    if v and sk in _state_to_key
+)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Unique cards", len(master))
