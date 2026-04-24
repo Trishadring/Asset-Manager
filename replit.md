@@ -16,6 +16,11 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## ManaPick (Streamlit)
+
+- `app.py` — Streamlit app for picking MTG orders from Manapool, sorted by physical-box order, enriched via Scryfall.
+- Run via the `Start application` workflow (`streamlit run app.py --server.port 5000`).
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages

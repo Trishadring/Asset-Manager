@@ -1,0 +1,40 @@
+Role: Expert Python Developer. Objective: Build a Streamlit app called "ManaPick" for an MTG seller.
+
+1. Setup & Data:
+
+    Input: Sidebar field for MANAPOOL_API_KEY.
+    Action: Fetch "Paid/Unshipped" orders from Manapool API.
+    Consolidation: Combine all orders into one master list. Sum the quantities for identical cards (Name + Set + Collector Number + Finish).
+
+2. Scryfall Enrichment (Rate Limited):
+
+    Fetch image_uris, colors, color_identity, and type_line for each unique card.
+    Cache results to prevent redundant API calls.
+
+3. The "Physical Box" Sorting Logic: Sort the master list into these specific headers in this order:
+
+    Spells by Color: White -> Blue -> Black -> Red -> Green -> Multicolor. (Sub-sort by: Creature -> Planeswalker -> Instant -> Sorcery -> Enchantment).
+    Artifacts (Colorless): Sub-divide into:
+        Mana Rocks: Artifacts with "add" and "mana" in oracle text (but not creatures).
+        Equipment/Vehicles: type_line contains "Equipment" or "Vehicle".
+        Artifact Creatures: type_line contains "Artifact" AND "Creature".
+        Utility Artifacts: All other colorless artifacts.
+    Non-Basic Lands: Sub-divide into:
+        Any-Color: Lands that can produce any color (e.g., Command Tower).
+        Dual/Fixing: Lands with 2+ colors in color_identity. Group these by color pair (e.g., all Blue/Black together).
+        Utility Lands: Lands with 0 or 1 color in color_identity.
+    Basic Lands: Grouped by name (Plains, Island, Swamp, Mountain, Forest).
+
+4. User Interface:
+
+    Grid Layout: Display card images in a 4-column grid.
+    Quantity Overlay: Place a large, high-contrast "PICK: QTY" badge on top of the card image.
+    Interactive Picking:
+        Add a "Picked" checkbox under each card.
+        State Change: When checked, the card image opacity should drop to 0.3 (faded) and the text should be struck through.
+    Section Headers: Every sub-division (e.g., "Artifacts - Mana Rocks") must have a clear, bold header.
+
+5. Edge Cases:
+
+    Ignore "Kindred" or "Tribal" in type_line when determining type.
+    If image_uris is missing, check card_faces[0]['image_uris'] (for double-faced cards).
