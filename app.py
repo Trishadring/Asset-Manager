@@ -1,6 +1,7 @@
 """ManaPick — MTG order picking helper for Manapool sellers."""
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict
 from typing import Any
@@ -226,9 +227,11 @@ st.caption("Pick & pack helper for Manapool sellers — sorted the way your phys
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("MANAPOOL_API_KEY", type="password",
+                            value=os.environ.get("MANAPOOL_API_KEY", ""),
                             help="Your Manapool seller API key.")
     seller_email = st.text_input("Seller email (if required for Basic auth)",
-                                 value="", help="Leave blank to use Bearer auth.")
+                                 value=os.environ.get("MANAPOOL_EMAIL", ""),
+                                 help="Leave blank to use Bearer auth.")
     fetch_btn = st.button("Fetch Paid / Unshipped Orders", type="primary",
                           use_container_width=True, disabled=not api_key)
     st.divider()
