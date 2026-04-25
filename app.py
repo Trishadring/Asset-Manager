@@ -22,7 +22,8 @@ COLOR_NAMES = {
     "R": "Red",
     "G": "Green",
 }
-TYPE_ORDER = ["Creature", "Planeswalker", "Instant", "Sorcery", "Enchantment", "Other"]
+TYPE_ORDER = ["Legendary", "Creature", "Planeswalker", "Instant", "Sorcery", "Enchantment", "Other"]
+TYPE_MATCH_PRIORITY = ["Legendary", "Enchantment", "Planeswalker", "Creature", "Instant", "Sorcery"]
 BASIC_LAND_NAMES = {"Plains", "Island", "Swamp", "Mountain", "Forest",
                     "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp",
                     "Snow-Covered Mountain", "Snow-Covered Forest", "Wastes"}
@@ -193,7 +194,7 @@ def clean_type_line(type_line: str) -> str:
 
 def primary_type(type_line: str) -> str:
     tl = clean_type_line(type_line)
-    for t in ["Creature", "Planeswalker", "Instant", "Sorcery", "Enchantment"]:
+    for t in TYPE_MATCH_PRIORITY:
         if t in tl:
             return t
     return "Other"
@@ -446,9 +447,18 @@ def render_pack_view() -> None:
         st.info("No orders to pack.")
         return
 
+    def _card_count(o: dict) -> int:
+        return sum(int(it.get("quantity") or 0) for it in (o.get("items") or [])
+                   if ((it.get("product") or {}).get("single")))
+
     pending = [o for o in orders if not st.session_state.shipped.get(o.get("id"))]
     done = [o for o in orders if st.session_state.shipped.get(o.get("id"))]
-    st.markdown(f"**{len(pending)} to pack** · {len(done)} shipped")
+    pending_cards = sum(_card_count(o) for o in pending)
+    done_cards = sum(_card_count(o) for o in done)
+    st.markdown(
+        f"**{len(pending)} orders to pack** ({pending_cards} cards) · "
+        f"{len(done)} shipped ({done_cards} cards)"
+    )
 
     for order in pending:
         oid = order.get("id", "")
@@ -459,7 +469,8 @@ def render_pack_view() -> None:
         with st.container(border=True):
             top_l, top_r = st.columns([2, 1])
             with top_l:
-                st.markdown(f"### Order `{label}`")
+                n_cards = _card_count(order)
+                st.markdown(f"### Order `{label}` — {n_cards} card{'s' if n_cards != 1 else ''}")
                 lines = [
                     addr.get("name", ""),
                     addr.get("line1", ""),
