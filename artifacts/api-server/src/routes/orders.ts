@@ -16,8 +16,30 @@ function manapoolHeaders(email: string, token: string) {
   };
 }
 
+/** Fetch a single order's detail from Manapool. Returns null on error. */
+async function fetchOrderDetail(
+  orderId: string,
+  email: string,
+  token: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const resp = await fetch(`${MANAPOOL_BASE}/seller/orders/${orderId}`, {
+      headers: manapoolHeaders(email, token),
+    });
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as Record<string, unknown>;
+    // Detail is wrapped in { order: { ... } }
+    return (body.order as Record<string, unknown> | undefined) ?? body;
+  } catch {
+    return null;
+  }
+}
+
 router.get("/orders", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(manapoolOrdersTable).orderBy(desc(manapoolOrdersTable.date));
+  const rows = await db
+    .select()
+    .from(manapoolOrdersTable)
+    .orderBy(desc(manapoolOrdersTable.date));
   res.json(rows);
 });
 
@@ -26,10 +48,7 @@ const CredBody = z.object({
   token: z.string().min(1),
 });
 
-/**
- * Debug endpoint — returns the raw API response for the first order so we
- * can inspect the exact field names the Manapool API uses.
- */
+/** Debug: returns raw list + detail structure for one order */
 router.post("/manapool/inspect", async (req, res): Promise<void> => {
   const parsed = CredBody.safeParse(req.body);
   if (!parsed.success) {
@@ -53,13 +72,11 @@ router.post("/manapool/inspect", async (req, res): Promise<void> => {
   }
 
   const orderId = String(firstOrder.id ?? "");
-  let detailBody: unknown = null;
-  if (orderId) {
-    const detailResp = await fetch(`${MANAPOOL_BASE}/seller/orders/${orderId}`, { headers });
-    if (detailResp.ok) detailBody = await detailResp.json();
-  }
+  const detail = orderId ? await fetchOrderDetail(orderId, email, token) : null;
 
-  res.json({ listOrder: firstOrder, detail: detailBody });
+  req.log.info({ listOrderKeys: Object.keys(firstOrder), listOrder: firstOrder, detailKeys: detail ? Object.keys(detail) : [], detail }, "Manapool inspect result");
+
+  res.json({ listOrder: firstOrder, detail });
 });
 
 router.post("/manapool/sync", async (req, res): Promise<void> => {
@@ -71,7 +88,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   const { email, token } = parsed.data;
   const headers = manapoolHeaders(email, token);
 
-  // Fetch ALL orders (no is_fulfilled filter) so today's unfulfilled orders appear too
+  // 1. Fetch full order list
   let pageOrders: Record<string, unknown>[] = [];
   let offset = 0;
   const limit = 100;
@@ -81,7 +98,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     while (true) {
       const resp = await fetch(
         `${MANAPOOL_BASE}/seller/orders?limit=${limit}&offset=${offset}`,
-        { headers }
+        { headers },
       );
       if (!resp.ok) {
         res.status(resp.status).json({ error: `Manapool API error: ${resp.statusText}` });
@@ -95,45 +112,80 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
       if (offset > 5000) break;
     }
   } catch (err) {
-    logger.error({ err }, "Manapool fetch failed");
+    logger.error({ err }, "Manapool list fetch failed");
     res.status(502).json({ error: "Failed to reach Manapool API" });
     return;
   }
 
-  // Log the first order's top-level keys so we can see the real structure
-  if (allOrders.length > 0) {
-    req.log.info({ firstOrderKeys: Object.keys(allOrders[0]!), firstOrder: allOrders[0] }, "Manapool first order structure");
-  }
-
+  // 2. Fetch order detail for each order to get fee + net data
+  //    Log the first detail's keys so we can verify the field names.
+  let loggedDetail = false;
   let upserted = 0;
+
   for (const o of allOrders) {
     const id = String(o.id ?? "");
     if (!id) continue;
 
-    // Try to extract payment amounts from multiple possible field shapes
-    // Shape A: top-level cents fields
-    // Shape B: nested payment object with cents
-    // Shape C: nested payment object with dollar amounts
-    // Shape D: top-level dollar amounts
-    const p = (o.payment as Record<string, unknown> | null | undefined) ?? {};
+    const gross = pickCents(o.total_cents);
+    const date = o.created_at ? new Date(String(o.created_at)) : new Date();
 
-    const gross =
-      pickCents(p.total_cents ?? o.total_cents ?? p.gross_cents ?? o.gross_cents) ??
-      pickDollars(p.total ?? o.total ?? p.gross ?? o.gross_total ?? o.gross);
+    // Fetch detail to get fee and net fields
+    const detail = await fetchOrderDetail(id, email, token);
 
+    if (!loggedDetail && detail) {
+      req.log.info(
+        { detailKeys: Object.keys(detail), detail },
+        "Manapool first order detail structure",
+      );
+      loggedDetail = true;
+    }
+
+    // Extract fee + net from detail — try every plausible field name
+    const d = detail ?? {};
     const fees =
-      pickCents(p.fee_cents ?? o.fee_cents ?? p.commission_cents ?? o.commission_cents) ??
-      pickDollars(p.fee ?? o.fee ?? p.commission ?? o.platform_fees ?? o.commission);
+      pickCents(
+        d.fee_cents ??
+          d.commission_cents ??
+          d.platform_fee_cents ??
+          d.manapool_fee_cents ??
+          (d.payment as Record<string, unknown> | undefined)?.fee_cents,
+      ) ??
+      pickDollars(
+        d.fee ??
+          d.commission ??
+          d.platform_fee ??
+          (d.payment as Record<string, unknown> | undefined)?.fee,
+      );
 
     const net =
-      pickCents(p.net_cents ?? o.net_cents ?? p.payout_cents ?? o.payout_cents ?? p.seller_payout_cents) ??
-      pickDollars(p.net ?? o.net ?? p.payout ?? o.seller_payout ?? o.net_payout ?? p.amount);
-
-    const date = o.created_at ? new Date(String(o.created_at)) : new Date();
+      pickCents(
+        d.net_cents ??
+          d.payout_cents ??
+          d.seller_payout_cents ??
+          d.net_payout_cents ??
+          (d.payment as Record<string, unknown> | undefined)?.net_cents ??
+          (d.payment as Record<string, unknown> | undefined)?.payout_cents,
+      ) ??
+      pickDollars(
+        d.net ??
+          d.payout ??
+          d.seller_payout ??
+          d.net_payout ??
+          (d.payment as Record<string, unknown> | undefined)?.net ??
+          (d.payment as Record<string, unknown> | undefined)?.payout,
+      ) ??
+      // Last resort: derive net from gross minus fees
+      (gross !== null && fees !== null ? gross - fees : null);
 
     await db
       .insert(manapoolOrdersTable)
-      .values({ id, date, grossTotal: gross ?? 0, platformFees: fees ?? 0, netPayout: net ?? 0 })
+      .values({
+        id,
+        date,
+        grossTotal: gross ?? 0,
+        platformFees: fees ?? 0,
+        netPayout: net ?? 0,
+      })
       .onConflictDoUpdate({
         target: manapoolOrdersTable.id,
         set: {
@@ -147,10 +199,14 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   }
 
   req.log.info({ upserted, total: allOrders.length }, "Manapool sync complete");
-  res.json({ message: `Synced ${allOrders.length} orders (${upserted} upserted).`, upserted, total: allOrders.length });
+  res.json({
+    message: `Synced ${allOrders.length} orders (${upserted} updated).`,
+    upserted,
+    total: allOrders.length,
+  });
 });
 
-/** Parse a value as cents → dollars. Returns null if value is 0 or missing. */
+/** Parse a value as cents → dollars. Returns null if value is falsy/zero. */
 function pickCents(v: unknown): number | null {
   if (v === undefined || v === null) return null;
   const n = Number(v);
@@ -158,7 +214,7 @@ function pickCents(v: unknown): number | null {
   return n / 100;
 }
 
-/** Parse a value as dollars directly. Returns null if value is 0 or missing. */
+/** Parse a value as dollars directly. Returns null if value is falsy/zero. */
 function pickDollars(v: unknown): number | null {
   if (v === undefined || v === null) return null;
   const n = Number(v);
