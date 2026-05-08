@@ -6,6 +6,7 @@ export const manapoolOrdersTable = pgTable("manapool_orders", {
   id: text("id").primaryKey(),
   date: timestamp("date", { withTimezone: true }).notNull(),
   grossTotal: real("gross_total").notNull(),
+  shippingTotal: real("shipping_total").notNull().default(0),
   platformFees: real("platform_fees").notNull(),
   netPayout: real("net_payout").notNull(),
 });

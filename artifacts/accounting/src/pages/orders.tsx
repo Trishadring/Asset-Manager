@@ -208,6 +208,7 @@ export default function Orders() {
                       <TableHead>Date</TableHead>
                       <TableHead>Order ID</TableHead>
                       <TableHead className="text-right">Gross Total</TableHead>
+                      <TableHead className="text-right">Shipping</TableHead>
                       <TableHead className="text-right">Platform Fees</TableHead>
                       <TableHead className="text-right font-bold">Net Payout</TableHead>
                     </TableRow>
@@ -223,6 +224,9 @@ export default function Orders() {
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {formatCurrency(order.grossTotal)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-blue-600 dark:text-blue-400">
+                          {formatCurrency(order.shippingTotal ?? 0)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-destructive">
                           -{formatCurrency(order.platformFees)}

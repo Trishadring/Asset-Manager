@@ -140,10 +140,11 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
       loggedDetail = true;
     }
 
-    // Extract fee + net from detail.payment (per OpenAPI spec: payment.fee_cents, payment.net_cents)
+    // Extract shipping/fee/net from detail.payment (per OpenAPI spec)
     const payment = detail
       ? (detail.payment as Record<string, unknown> | undefined)
       : undefined;
+    const shipping = payment ? centsToAmount(payment.shipping_cents) : null;
     const fees = payment ? centsToAmount(payment.fee_cents) : null;
     const net = payment ? centsToAmount(payment.net_cents) : null;
 
@@ -153,6 +154,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
         id,
         date,
         grossTotal: gross,
+        shippingTotal: shipping ?? 0,
         platformFees: fees ?? 0,
         netPayout: net ?? 0,
       })
@@ -161,7 +163,8 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
         set: {
           date,
           grossTotal: gross,
-          // Only overwrite fees/net if we got a valid detail response
+          // Only overwrite payment fields if we got a valid detail response
+          shippingTotal: shipping !== null ? shipping : sql`${manapoolOrdersTable.shippingTotal}`,
           platformFees: fees !== null ? fees : sql`${manapoolOrdersTable.platformFees}`,
           netPayout: net !== null ? net : sql`${manapoolOrdersTable.netPayout}`,
         },

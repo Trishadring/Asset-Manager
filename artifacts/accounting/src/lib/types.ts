@@ -9,6 +9,7 @@ export type ManapoolOrder = {
   id: string;
   date: string;
   grossTotal: number;
+  shippingTotal: number;
   platformFees: number;
   netPayout: number;
 };
