@@ -1,0 +1,72 @@
+Project Goal: Build a full-stack Cash-Basis Profit & Loss (P&L) tracker for my Trading Card Game (TCG) business. The app will track money spent (Purchases) and money earned via an API sync (ManaPool Orders) to calculate Net Profit.
+
+Tech Stack: React (Vite), Tailwind CSS, Lucide React (for icons), Node.js, Express, and Prisma with SQLite.
+
+Please build this app step-by-step following these requirements:
+1. Database Setup (Prisma + SQLite)
+
+Create a schema.prisma file with two models:
+
+    Purchase: id (String/UUID), date (DateTime, default now), description (String), amount (Float).
+    Order: id (String, unique - this is the ManaPool order ID), date (DateTime), grossTotal (Float), platformFees (Float), netPayout (Float).
+
+2. Backend Setup (Node.js + Express)
+
+Set up an Express server (e.g., running on port 3001) with Prisma Client and the following routes:
+
+    GET /api/dashboard: Calculate and return { totalExpenses: sum(Purchase.amount), totalRevenue: sum(Order.netPayout), netProfit: totalRevenue - totalExpenses }.
+    GET /api/purchases: Return all purchases ordered by date descending.
+    POST /api/purchases: Accept { description, amount, date } and create a new Purchase.
+    GET /api/orders: Return all orders ordered by date descending.
+    POST /api/manapool/sync:
+        Accepts { email, token } in the request body.
+        Makes a GET request to https://manapool.com/api/v1/seller/orders using headers: X-ManaPool-Email and X-ManaPool-Access-Token.
+        Parses the response. For each order, map it to our schema (grossTotal = total, platformFees = fees, netPayout = net_payout).
+        Use Prisma's upsert or createMany to save these into the Order table (ignore duplicates based on ID).
+        Return a success message with the count of new orders added.
+
+Important: Configure vite.config.js to proxy /api requests to the Express server.
+3. Frontend Setup (React + Tailwind)
+
+Create a clean, modern dashboard with a Sidebar navigation containing three tabs:
+
+    Dashboard Tab: Display three large metric cards: Total Revenue (Green), Total Expenses (Red), and Net Profit (Blue/Green if positive, Red if negative).
+    Purchases Tab (Money Out):
+        A form to add a new purchase (Inputs: Date, Description, Amount) and a submit button.
+        A table below displaying all historical purchases.
+    Orders Tab (Money In):
+        A top panel with inputs for "ManaPool Email" and "ManaPool Token". Save these to localStorage so they persist.
+        A "Sync Orders from ManaPool" button that calls the /api/manapool/sync endpoint, shows a loading spinner, and refreshes the data upon success.
+        A table below displaying all synced orders (Date, Order ID, Gross, Fees, Net Payout).
+
+4. Database Seeding
+
+Create a prisma/seed.js script that clears the database and inserts my historical purchase data. Use this exact array of objects for the Purchase table:
+
+javascript
+const purchases = [
+  { date: new Date('2026-01-01'), description: 'Strixhaven Draft Booster Box', amount: 130.00 },
+  { date: new Date('2026-01-01'), description: 'Endless Punishment Commander Deck (Nerdtopia)', amount: 80.00 },
+  { date: new Date('2026-01-01'), description: 'Prismari Artistry Commander Deck (Nerdtopia)', amount: 45.00 },
+  { date: new Date('2026-03-07'), description: "Kitsune Dragon's Daughter (Single)", amount: 1.06 },
+  { date: new Date('2026-03-12'), description: 'Bulk lot of 600 cards', amount: 35.31 },
+  { date: new Date('2026-03-15'), description: 'Lorwyn Eclipsed Commander Case (4 Decks)', amount: 107.64 },
+  { date: new Date('2026-03-16'), description: 'Lorwyn Eclipsed Commander Case (4 Decks)', amount: 112.68 },
+  { date: new Date('2026-03-16'), description: 'Starter Commander Deck Sealed Case (5 Decks)', amount: 105.26 },
+  { date: new Date('2026-03-16'), description: 'Unaccounted Bulk', amount: 28.48 },
+  { date: new Date('2026-03-19'), description: '50 Shipping Shields', amount: 14.83 },
+  { date: new Date('2026-03-25'), description: 'Throne of Eldraine Brawl Deck Wild Bounty', amount: 28.24 },
+  { date: new Date('2026-03-30'), description: 'Custom Commander Deck (Maralen)', amount: 16.56 },
+  { date: new Date('2026-04-06'), description: 'Bulk cards (rock_of_the_oath)', amount: 95.43 },
+  { date: new Date('2026-04-13'), description: 'Duskmourn Play Booster Box', amount: 134.28 },
+  { date: new Date('2026-04-15'), description: '50 Shipping Shields', amount: 14.83 },
+  { date: new Date('2026-04-15'), description: 'Duskmourn House of Horror Commander Case (4 Decks)', amount: 251.42 },
+  { date: new Date('2026-04-16'), description: 'Wilds of Eldraine Draft Booster Box', amount: 248.12 },
+  { date: new Date('2026-04-16'), description: 'Lord Skitter Sewer King (Single)', amount: 5.55 },
+  { date: new Date('2026-04-30'), description: 'Outlaws Of Thunder Junction Deck (Most Wanted)', amount: 88.20 },
+  { date: new Date('2026-04-30'), description: '200 Shipping Shields', amount: 49.80 },
+  { date: new Date('2026-05-04'), description: 'MTG Secrets Of Strixhaven Deck (Witherbloom)', amount: 50.21 },
+  { date: new Date('2026-05-04'), description: 'MTG Secrets Of Strixhaven Deck (Prismari)', amount: 40.67 }
+];
+
+Please generate the full project, run the database migrations, run the seed script, and start the dev server.
