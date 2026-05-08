@@ -1,0 +1,20 @@
+export type Purchase = {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+};
+
+export type ManapoolOrder = {
+  id: string;
+  date: string;
+  grossTotal: number;
+  platformFees: number;
+  netPayout: number;
+};
+
+export type DashboardStats = {
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+};
