@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, manapoolOrdersTable } from "@workspace/db";
 import { logger } from "../lib/logger";
@@ -126,7 +126,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     const id = String(o.id ?? "");
     if (!id) continue;
 
-    const gross = pickCents(o.total_cents);
+    const gross = centsToAmount(o.total_cents);
     const date = o.created_at ? new Date(String(o.created_at)) : new Date();
 
     // Fetch detail to get fee and net fields
@@ -140,49 +140,19 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
       loggedDetail = true;
     }
 
-    // Extract fee + net from detail — try every plausible field name
-    const d = detail ?? {};
-    const fees =
-      pickCents(
-        d.fee_cents ??
-          d.commission_cents ??
-          d.platform_fee_cents ??
-          d.manapool_fee_cents ??
-          (d.payment as Record<string, unknown> | undefined)?.fee_cents,
-      ) ??
-      pickDollars(
-        d.fee ??
-          d.commission ??
-          d.platform_fee ??
-          (d.payment as Record<string, unknown> | undefined)?.fee,
-      );
-
-    const net =
-      pickCents(
-        d.net_cents ??
-          d.payout_cents ??
-          d.seller_payout_cents ??
-          d.net_payout_cents ??
-          (d.payment as Record<string, unknown> | undefined)?.net_cents ??
-          (d.payment as Record<string, unknown> | undefined)?.payout_cents,
-      ) ??
-      pickDollars(
-        d.net ??
-          d.payout ??
-          d.seller_payout ??
-          d.net_payout ??
-          (d.payment as Record<string, unknown> | undefined)?.net ??
-          (d.payment as Record<string, unknown> | undefined)?.payout,
-      ) ??
-      // Last resort: derive net from gross minus fees
-      (gross !== null && fees !== null ? gross - fees : null);
+    // Extract fee + net from detail.payment (per OpenAPI spec: payment.fee_cents, payment.net_cents)
+    const payment = detail
+      ? (detail.payment as Record<string, unknown> | undefined)
+      : undefined;
+    const fees = payment ? centsToAmount(payment.fee_cents) : null;
+    const net = payment ? centsToAmount(payment.net_cents) : null;
 
     await db
       .insert(manapoolOrdersTable)
       .values({
         id,
         date,
-        grossTotal: gross ?? 0,
+        grossTotal: gross,
         platformFees: fees ?? 0,
         netPayout: net ?? 0,
       })
@@ -190,9 +160,10 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
         target: manapoolOrdersTable.id,
         set: {
           date,
-          grossTotal: gross ?? sql`excluded.gross_total`,
-          platformFees: fees ?? sql`excluded.platform_fees`,
-          netPayout: net ?? sql`excluded.net_payout`,
+          grossTotal: gross,
+          // Only overwrite fees/net if we got a valid detail response
+          platformFees: fees !== null ? fees : sql`${manapoolOrdersTable.platformFees}`,
+          netPayout: net !== null ? net : sql`${manapoolOrdersTable.netPayout}`,
         },
       });
     upserted++;
@@ -206,20 +177,13 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   });
 });
 
-/** Parse a value as cents → dollars. Returns null if value is falsy/zero. */
-function pickCents(v: unknown): number | null {
-  if (v === undefined || v === null) return null;
+/** Convert a cents value (integer) to a dollar amount. Returns 0 for missing/invalid. */
+function centsToAmount(v: unknown): number {
+  if (v === undefined || v === null) return 0;
   const n = Number(v);
-  if (Number.isNaN(n) || n === 0) return null;
+  if (Number.isNaN(n)) return 0;
   return n / 100;
 }
 
-/** Parse a value as dollars directly. Returns null if value is falsy/zero. */
-function pickDollars(v: unknown): number | null {
-  if (v === undefined || v === null) return null;
-  const n = Number(v);
-  if (Number.isNaN(n) || n === 0) return null;
-  return n;
-}
 
 export default router;
