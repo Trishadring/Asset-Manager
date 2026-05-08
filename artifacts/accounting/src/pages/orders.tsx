@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { RefreshCw, KeyRound, Mail } from "lucide-react";
+import { RefreshCw, KeyRound, Mail, Search } from "lucide-react";
 
-import { useOrders, useSyncOrders } from "@/hooks/use-orders";
+import { useOrders, useSyncOrders, useInspectOrder } from "@/hooks/use-orders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,10 +28,12 @@ function formatCurrency(amount: number) {
 export default function Orders() {
   const { data: orders, isLoading } = useOrders();
   const syncOrders = useSyncOrders();
+  const inspectOrder = useInspectOrder();
   const { toast } = useToast();
 
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
+  const [inspectResult, setInspectResult] = useState<unknown>(null);
   
   useEffect(() => {
     const savedEmail = localStorage.getItem("manapool_email");
@@ -63,7 +65,7 @@ export default function Orders() {
       onSuccess: (data) => {
         toast({
           title: "Sync complete",
-          description: `Added ${data.added} new orders.`,
+          description: data.message,
         });
       },
       onError: (error) => {
@@ -84,14 +86,36 @@ export default function Orders() {
           <p className="text-muted-foreground mt-1">Sync your sales data automatically.</p>
         </div>
         
-        <Button 
-          onClick={handleSync} 
-          disabled={syncOrders.isPending}
-          data-testid="button-sync-orders"
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${syncOrders.isPending ? "animate-spin" : ""}`} />
-          {syncOrders.isPending ? "Syncing..." : "Sync Orders"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (!email || !token) { toast({ variant: "destructive", title: "Enter credentials first" }); return; }
+              inspectOrder.mutate({ email, token }, {
+                onSuccess: (data) => {
+                  setInspectResult(data);
+                  console.log("[Manapool inspect]", JSON.stringify(data, null, 2));
+                  toast({ title: "Inspect complete — see panel below" });
+                },
+                onError: (err) => toast({ variant: "destructive", title: "Inspect failed", description: err.message }),
+              });
+            }}
+            disabled={inspectOrder.isPending}
+            data-testid="button-inspect-order"
+          >
+            <Search className="mr-1 h-3.5 w-3.5" />
+            {inspectOrder.isPending ? "Inspecting…" : "Inspect"}
+          </Button>
+          <Button 
+            onClick={handleSync} 
+            disabled={syncOrders.isPending}
+            data-testid="button-sync-orders"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${syncOrders.isPending ? "animate-spin" : ""}`} />
+            {syncOrders.isPending ? "Syncing..." : "Sync Orders"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -141,6 +165,22 @@ export default function Orders() {
             </div>
           </CardContent>
         </Card>
+
+        {inspectResult && (
+          <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                <span>Raw API Structure (first order)</span>
+                <button onClick={() => setInspectResult(null)} className="text-xs underline opacity-60 hover:opacity-100">dismiss</button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <pre className="text-xs overflow-auto max-h-96 whitespace-pre-wrap break-all font-mono text-amber-900 dark:text-amber-200">
+                {JSON.stringify(inspectResult, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="p-0">

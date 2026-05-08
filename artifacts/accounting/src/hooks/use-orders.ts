@@ -17,7 +17,7 @@ export function useOrders() {
 export function useSyncOrders() {
   const queryClient = useQueryClient();
   
-  return useMutation<{ message: string; added: number; total: number }, Error, { email: string; token: string }>({
+  return useMutation<{ message: string; upserted: number; total: number }, Error, { email: string; token: string }>({
     mutationFn: async (data) => {
       const res = await fetch(`${getBaseUrl()}/api/manapool/sync`, {
         method: "POST",
@@ -33,6 +33,23 @@ export function useSyncOrders() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useInspectOrder() {
+  return useMutation<unknown, Error, { email: string; token: string }>({
+    mutationFn: async (data) => {
+      const res = await fetch(`${getBaseUrl()}/api/manapool/inspect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || "Inspect failed");
+      }
+      return res.json();
     },
   });
 }
