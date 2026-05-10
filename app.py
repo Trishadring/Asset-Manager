@@ -261,11 +261,17 @@ def color_sort_index(label: str) -> int:
 st.title("🃏 ManaPick")
 st.caption("Pick & pack helper for Manapool sellers — sorted the way your physical box is.")
 
+_qp = st.query_params
+_default_email = _qp.get("mp_email", "") or ""
+_default_token = _qp.get("mp_token", "") or ""
+
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("MANAPOOL_API_KEY", type="password",
+                            value=_default_token,
                             help="Your Manapool seller API key.")
     seller_email = st.text_input("Seller email",
+                                 value=_default_email,
                                  help="The email on your Manapool account.")
     fetch_btn = st.button("Fetch Paid / Unshipped Orders", type="primary",
                           use_container_width=True,

@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import { Layout } from "@/components/layout";
+import { CredentialsProvider } from "@/lib/credentials-context";
 import Dashboard from "@/pages/dashboard";
 import Purchases from "@/pages/purchases";
 import Orders from "@/pages/orders";
@@ -36,10 +37,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <CredentialsProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </CredentialsProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
