@@ -2,7 +2,9 @@ import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
   ShoppingCart, 
-  ListOrdered 
+  ListOrdered,
+  PackageSearch,
+  ExternalLink,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -41,6 +43,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+
+          <div className="hidden md:block my-2 border-t border-sidebar-border" />
+
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="link-nav-picker"
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+          >
+            <PackageSearch size={18} className="text-muted-foreground" />
+            <span>ManaPick</span>
+            <ExternalLink size={12} className="ml-auto text-muted-foreground opacity-60" />
+          </a>
         </nav>
       </aside>
       <main className="flex-1 flex flex-col min-w-0">
