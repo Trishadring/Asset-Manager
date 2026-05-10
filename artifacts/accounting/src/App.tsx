@@ -8,6 +8,7 @@ import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Purchases from "@/pages/purchases";
 import Orders from "@/pages/orders";
+import ManaPick from "@/pages/manapick";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/purchases" component={Purchases} />
         <Route path="/orders" component={Orders} />
+        <Route path="/manapick" component={ManaPick} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
