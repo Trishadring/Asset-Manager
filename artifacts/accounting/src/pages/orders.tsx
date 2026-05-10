@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { RefreshCw, KeyRound, Mail, Search } from "lucide-react";
+import { getCookie, setCookie } from "@/lib/cookies";
 
 import { useOrders, useSyncOrders, useInspectOrder } from "@/hooks/use-orders";
 import { Button } from "@/components/ui/button";
@@ -36,18 +37,18 @@ export default function Orders() {
   const [inspectResult, setInspectResult] = useState<unknown>(null);
   
   useEffect(() => {
-    const savedEmail = localStorage.getItem("manapool_email");
-    const savedToken = localStorage.getItem("manapool_token");
+    const savedEmail = getCookie("manapool_email");
+    const savedToken = getCookie("manapool_token");
     if (savedEmail) setEmail(savedEmail);
     if (savedToken) setToken(savedToken);
   }, []);
 
   const handleSaveCredentials = () => {
-    localStorage.setItem("manapool_email", email);
-    localStorage.setItem("manapool_token", token);
+    setCookie("manapool_email", email);
+    setCookie("manapool_token", token);
     toast({
       title: "Credentials saved",
-      description: "Stored securely in local storage.",
+      description: "Saved in your browser cookies.",
     });
   };
 
