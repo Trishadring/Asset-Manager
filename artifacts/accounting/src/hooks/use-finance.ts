@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DashboardStats, Purchase } from "@/lib/types";
+import { DashboardStats, Purchase, WeeklyStats } from "@/lib/types";
 
 const getBaseUrl = () => "";
 
@@ -41,6 +41,17 @@ export function useCreatePurchase() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchases"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useWeeklyStats() {
+  return useQuery<WeeklyStats[]>({
+    queryKey: ["weekly"],
+    queryFn: async () => {
+      const res = await fetch(`${getBaseUrl()}/api/weekly`);
+      if (!res.ok) throw new Error("Failed to fetch weekly stats");
+      return res.json();
     },
   });
 }

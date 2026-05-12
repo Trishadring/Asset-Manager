@@ -19,3 +19,11 @@ export type DashboardStats = {
   totalExpenses: number;
   netProfit: number;
 };
+
+export type WeeklyStats = {
+  week: string;
+  revenue: number;
+  spending: number;
+  orders: number;
+  profit: number;
+};
