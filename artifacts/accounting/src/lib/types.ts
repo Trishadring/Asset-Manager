@@ -20,6 +20,14 @@ export type DashboardStats = {
   netProfit: number;
 };
 
+export type CustomSale = {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  notes: string | null;
+};
+
 export type WeeklyStats = {
   week: string;
   revenue: number;

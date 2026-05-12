@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { sum, sql } from "drizzle-orm";
-import { db, purchasesTable, manapoolOrdersTable } from "@workspace/db";
+import { db, purchasesTable, manapoolOrdersTable, customSalesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -11,9 +11,12 @@ router.get("/dashboard", async (_req, res): Promise<void> => {
   const [revRow] = await db
     .select({ total: sum(manapoolOrdersTable.netPayout) })
     .from(manapoolOrdersTable);
+  const [customRevRow] = await db
+    .select({ total: sum(customSalesTable.amount) })
+    .from(customSalesTable);
 
   const totalExpenses = Number(expRow?.total ?? 0);
-  const totalRevenue = Number(revRow?.total ?? 0);
+  const totalRevenue = Number(revRow?.total ?? 0) + Number(customRevRow?.total ?? 0);
   const netProfit = totalRevenue - totalExpenses;
 
   res.json({ totalExpenses, totalRevenue, netProfit });
@@ -41,6 +44,17 @@ router.get("/weekly", async (_req, res): Promise<void> => {
     ORDER BY 1
   `);
 
+  const customSalesRows = await db.execute(sql`
+    SELECT
+      to_char(date_trunc('week', date AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS week,
+      ROUND(SUM(amount)::numeric, 2) AS revenue,
+      COUNT(*)::int AS orders
+    FROM custom_sales
+    WHERE date >= NOW() - INTERVAL '16 weeks'
+    GROUP BY 1
+    ORDER BY 1
+  `);
+
   // Merge by week
   const map = new Map<string, { week: string; revenue: number; spending: number; orders: number; profit: number }>();
 
@@ -58,6 +72,13 @@ router.get("/weekly", async (_req, res): Promise<void> => {
     const week = String(row.week);
     const existing = map.get(week) ?? { week, revenue: 0, spending: 0, orders: 0, profit: 0 };
     existing.spending = Number(row.spending ?? 0);
+    map.set(week, existing);
+  }
+  for (const row of customSalesRows.rows) {
+    const week = String(row.week);
+    const existing = map.get(week) ?? { week, revenue: 0, spending: 0, orders: 0, profit: 0 };
+    existing.revenue += Number(row.revenue ?? 0);
+    existing.orders += Number(row.orders ?? 0);
     map.set(week, existing);
   }
 

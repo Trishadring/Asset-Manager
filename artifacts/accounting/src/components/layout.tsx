@@ -4,6 +4,7 @@ import {
   ShoppingCart, 
   ListOrdered,
   PackageSearch,
+  HandCoins,
   Check,
   Save,
 } from "lucide-react";
@@ -20,6 +21,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/purchases", label: "Purchases", icon: ShoppingCart },
     { href: "/orders", label: "Orders", icon: ListOrdered },
+    { href: "/sales", label: "Sales", icon: HandCoins },
   ];
 
   return (

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DashboardStats, Purchase, WeeklyStats } from "@/lib/types";
+import { DashboardStats, Purchase, WeeklyStats, CustomSale } from "@/lib/types";
 
 const getBaseUrl = () => "";
 
@@ -41,6 +41,52 @@ export function useCreatePurchase() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchases"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useCustomSales() {
+  return useQuery<CustomSale[]>({
+    queryKey: ["sales"],
+    queryFn: async () => {
+      const res = await fetch(`/api/sales`);
+      if (!res.ok) throw new Error("Failed to fetch sales");
+      return res.json();
+    },
+  });
+}
+
+export function useCreateCustomSale() {
+  const queryClient = useQueryClient();
+  return useMutation<CustomSale, Error, { description: string; amount: number; date?: string; notes?: string }>({
+    mutationFn: async (data) => {
+      const res = await fetch(`/api/sales`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to create sale");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly"] });
+    },
+  });
+}
+
+export function useDeleteCustomSale() {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      const res = await fetch(`/api/sales/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete sale");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly"] });
     },
   });
 }
