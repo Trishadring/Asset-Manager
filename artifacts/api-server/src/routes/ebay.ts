@@ -132,12 +132,15 @@ router.get("/ebay/auth-url", (req, res): void => {
     res.status(500).json({ error: "EBAY_CLIENT_ID or EBAY_RUNAME not configured" });
     return;
   }
-  const url = new URL("https://auth.ebay.com/oauth2/authorize");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("redirect_uri", ruName);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", SCOPES);
-  res.json({ url: url.toString() });
+  // Build manually — URLSearchParams encodes spaces as '+' but eBay requires '%20' in scope
+  const encodedScope = SCOPES.split(" ").map(encodeURIComponent).join("%20");
+  const url =
+    `https://auth.ebay.com/oauth2/authorize` +
+    `?client_id=${encodeURIComponent(clientId)}` +
+    `&redirect_uri=${encodeURIComponent(ruName)}` +
+    `&response_type=code` +
+    `&scope=${encodedScope}`;
+  res.json({ url });
 });
 
 /** eBay redirects here after user authorizes — exchanges code for refresh token */
