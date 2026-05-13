@@ -35,3 +35,13 @@ export type WeeklyStats = {
   orders: number;
   profit: number;
 };
+
+export type EbayOrder = {
+  id: string;
+  date: string;
+  grossTotal: number;
+  shippingTotal: number;
+  platformFees: number;
+  netPayout: number;
+  itemCount: number;
+};
