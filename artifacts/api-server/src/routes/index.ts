@@ -4,6 +4,7 @@ import purchasesRouter from "./purchases";
 import ordersRouter from "./orders";
 import dashboardRouter from "./dashboard";
 import salesRouter from "./sales";
+import ebayNotificationsRouter from "./ebay-notifications";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(dashboardRouter);
 router.use(purchasesRouter);
 router.use(ordersRouter);
 router.use(salesRouter);
+router.use(ebayNotificationsRouter);
 
 export default router;
