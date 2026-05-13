@@ -36,6 +36,7 @@ export default function Orders() {
 
   const { data: ebayOrders, isLoading: ebayLoading } = useEbayOrders();
   const syncEbay = useSyncEbayOrders();
+  const { data: ebayAuthData } = useEbayAuthUrl();
 
   const { toast } = useToast();
   const { email, token } = useCredentials();
@@ -105,10 +106,19 @@ export default function Orders() {
         )}
 
         {activeTab === "ebay" && (
-          <Button onClick={handleEbaySync} disabled={syncEbay.isPending} data-testid="button-sync-ebay">
-            <RefreshCw className={`mr-2 h-4 w-4 ${syncEbay.isPending ? "animate-spin" : ""}`} />
-            {syncEbay.isPending ? "Syncing..." : "Sync eBay Orders"}
-          </Button>
+          <div className="flex gap-2">
+            {ebayAuthData?.url && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={ebayAuthData.url} target="_blank" rel="noreferrer">
+                  Connect eBay Account
+                </a>
+              </Button>
+            )}
+            <Button onClick={handleEbaySync} disabled={syncEbay.isPending} data-testid="button-sync-ebay">
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncEbay.isPending ? "animate-spin" : ""}`} />
+              {syncEbay.isPending ? "Syncing..." : "Sync eBay Orders"}
+            </Button>
+          </div>
         )}
       </div>
 
