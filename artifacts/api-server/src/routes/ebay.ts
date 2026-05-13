@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { db, ebayOrdersTable, settingsTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 
-const FULFILLMENT_SCOPE = "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
+const SCOPES = [
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly",
+  "https://api.ebay.com/oauth/api_scope/sell.finances",
+].join(" ");
 
 const router: IRouter = Router();
 
@@ -12,15 +15,12 @@ let cachedToken: { value: string; expiresAt: number } | null = null;
 const REFRESH_TOKEN_KEY = "ebay_refresh_token";
 
 async function getStoredRefreshToken(): Promise<string | null> {
-  // Check DB first (set by OAuth callback)
   const [row] = await db
     .select()
     .from(settingsTable)
     .where(eq(settingsTable.key, REFRESH_TOKEN_KEY))
     .limit(1);
   if (row?.value) return row.value;
-
-  // Fall back to env var (legacy / manual override)
   return process.env["EBAY_USER_TOKEN"] ?? null;
 }
 
@@ -35,7 +35,6 @@ async function saveRefreshToken(token: string): Promise<void> {
 }
 
 async function getAccessToken(): Promise<string> {
-  // Return cached token if still valid (with 60s buffer)
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
     return cachedToken.value;
   }
@@ -62,7 +61,7 @@ async function getAccessToken(): Promise<string> {
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: FULFILLMENT_SCOPE,
+      scope: SCOPES,
     }),
   });
 
@@ -88,12 +87,17 @@ interface EbayOrderRaw {
   pricingSummary?: {
     total?: { value?: string };
     deliveryCost?: { value?: string };
-    priceSubtotal?: { value?: string };
   };
 }
 
+interface EbayTransaction {
+  orderId?: string;
+  transactionType?: string;
+  amount?: { value?: string };
+  totalFeeAmount?: { value?: string };
+}
+
 function isActiveOrder(o: EbayOrderRaw): boolean {
-  // Skip cancelled orders — they don't count as revenue
   if (o.cancelStatus?.cancelState === "CANCEL_COMPLETE") return false;
   if (o.orderFulfillmentStatus === "NOT_STARTED" && o.cancelStatus?.cancelState) return false;
   return true;
@@ -122,6 +126,46 @@ async function fetchAllOrders(token: string): Promise<EbayOrderRaw[]> {
   return orders.filter(isActiveOrder);
 }
 
+/** Fetch all SALE transactions from Finances API. Returns a map of orderId -> fees. */
+async function fetchFeesByOrder(token: string): Promise<Map<string, number>> {
+  const feeMap = new Map<string, number>();
+  let offset = 0;
+  const limit = 200;
+
+  try {
+    while (true) {
+      const res = await fetch(
+        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SALE&limit=${limit}&offset=${offset}`,
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+
+      if (!res.ok) {
+        // Finances API not available (scope not granted yet) — return empty map
+        break;
+      }
+
+      const data = (await res.json()) as { transactions?: EbayTransaction[]; total?: number };
+      const page = data.transactions ?? [];
+
+      for (const tx of page) {
+        if (tx.orderId && tx.totalFeeAmount?.value) {
+          const fee = parseFloat(tx.totalFeeAmount.value);
+          if (!isNaN(fee) && fee > 0) {
+            feeMap.set(tx.orderId, fee);
+          }
+        }
+      }
+
+      if (page.length < limit) break;
+      offset += limit;
+    }
+  } catch {
+    // Silently fall back to no fees if Finances API fails
+  }
+
+  return feeMap;
+}
+
 /** Returns the eBay OAuth authorization URL for the user to visit */
 router.get("/ebay/auth-url", (req, res): void => {
   const clientId = process.env["EBAY_CLIENT_ID"];
@@ -130,13 +174,12 @@ router.get("/ebay/auth-url", (req, res): void => {
     res.status(500).json({ error: "EBAY_CLIENT_ID or EBAY_RUNAME not configured" });
     return;
   }
-  const encodedScope = encodeURIComponent(FULFILLMENT_SCOPE);
   const url =
     `https://auth.ebay.com/oauth2/authorize` +
     `?client_id=${encodeURIComponent(clientId)}` +
     `&redirect_uri=${encodeURIComponent(ruName)}` +
     `&response_type=code` +
-    `&scope=${encodedScope}`;
+    `&scope=${encodeURIComponent(SCOPES)}`;
   res.json({ url });
 });
 
@@ -187,10 +230,7 @@ router.get("/ebay/oauth-callback", async (req, res): Promise<void> => {
     refresh_token_expires_in: number;
   };
 
-  // Auto-save refresh token to DB — no manual copy needed
   await saveRefreshToken(data.refresh_token);
-
-  // Cache the access token for immediate use
   cachedToken = { value: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
 
   const expiryDays = Math.round(data.refresh_token_expires_in / 86400);
@@ -206,7 +246,7 @@ router.get("/ebay/oauth-callback", async (req, res): Promise<void> => {
 <body>
   <div class="box">
     <h2>eBay connected!</h2>
-    <p>Your refresh token has been saved automatically. You can close this tab.</p>
+    <p>Your refresh token has been saved automatically. You can close this tab and sync your orders.</p>
     <p style="font-size:13px;color:#94a3b8">Token valid for ${expiryDays} days. Reconnect from the Orders page before it expires.</p>
   </div>
 </body>
@@ -216,19 +256,26 @@ router.get("/ebay/oauth-callback", async (req, res): Promise<void> => {
 router.post("/ebay/sync", async (req, res): Promise<void> => {
   try {
     const token = await getAccessToken();
-    const orders = await fetchAllOrders(token);
+
+    // Fetch orders and fee data in parallel
+    const [orders, feeMap] = await Promise.all([
+      fetchAllOrders(token),
+      fetchFeesByOrder(token),
+    ]);
 
     const rows = orders.map((o) => {
       const gross = parseFloat(o.pricingSummary?.total?.value ?? "0");
       const shipping = parseFloat(o.pricingSummary?.deliveryCost?.value ?? "0");
+      const fees = feeMap.get(o.orderId) ?? 0;
+      const net = gross - fees;
 
       return {
         id: o.orderId,
         date: new Date(o.creationDate),
         grossTotal: gross,
         shippingTotal: shipping,
-        platformFees: 0, // populated once sell.finances.readonly scope is enabled
-        netPayout: gross,
+        platformFees: fees,
+        netPayout: net,
         itemCount: Array.isArray(o.lineItems) ? o.lineItems.length : 1,
       };
     });
@@ -253,8 +300,9 @@ router.post("/ebay/sync", async (req, res): Promise<void> => {
         },
       });
 
+    const withFees = rows.filter((r) => r.platformFees > 0).length;
     res.json({
-      message: `Synced ${rows.length} eBay order${rows.length !== 1 ? "s" : ""}`,
+      message: `Synced ${rows.length} eBay order${rows.length !== 1 ? "s" : ""} (${withFees} with real fee data).`,
       upserted: rows.length,
       total: rows.length,
     });
