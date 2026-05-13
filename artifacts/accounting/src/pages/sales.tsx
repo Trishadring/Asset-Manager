@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { PlusCircle, Trash2, HandCoins } from "lucide-react";
+import { PlusCircle, Trash2, HandCoins, CornerDownLeft } from "lucide-react";
 import { useCustomSales, useCreateCustomSale, useDeleteCustomSale } from "@/hooks/use-finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,19 +42,24 @@ export default function Sales() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
 
-  const totalRevenue = (sales ?? []).reduce((sum, s) => sum + s.amount, 0);
+  const netTotal = (sales ?? []).reduce((sum, s) => sum + s.amount, 0);
+  const refundCount = (sales ?? []).filter((s) => s.amount < 0).length;
 
   const handleSubmit = () => {
     const parsed = parseFloat(amount);
-    if (!description.trim() || isNaN(parsed) || parsed <= 0) {
-      toast({ variant: "destructive", title: "Please fill in a description and a valid amount." });
+    if (!description.trim() || isNaN(parsed) || parsed === 0) {
+      toast({ variant: "destructive", title: "Please fill in a description and a non-zero amount." });
       return;
     }
     createSale.mutate(
       { description: description.trim(), amount: parsed, date, notes: notes.trim() || undefined },
       {
         onSuccess: () => {
-          toast({ title: "Sale recorded", description: `${description} — ${formatCurrency(parsed)}` });
+          const isRefund = parsed < 0;
+          toast({
+            title: isRefund ? "Refund recorded" : "Sale recorded",
+            description: `${description} — ${formatCurrency(parsed)}`,
+          });
           setDescription("");
           setAmount("");
           setDate(new Date().toISOString().slice(0, 10));
@@ -70,25 +75,27 @@ export default function Sales() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Manual Sales</h2>
-          <p className="text-muted-foreground mt-1">Log sales to friends, local trades, or anything off-platform.</p>
+          <h2 className="text-3xl font-bold tracking-tight">Manual Sales & Refunds</h2>
+          <p className="text-muted-foreground mt-1">
+            Log off-platform sales, friend trades, or refunds. Use a negative amount for refunds.
+          </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-sale">
-              <PlusCircle className="mr-2 h-4 w-4" /> Record sale
+              <PlusCircle className="mr-2 h-4 w-4" /> Record entry
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Record a sale</DialogTitle>
+              <DialogTitle>Record a sale or refund</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-1.5">
                 <Label htmlFor="sale-desc">Who / what</Label>
                 <Input
                   id="sale-desc"
-                  placeholder="e.g. sold Black Lotus to friend"
+                  placeholder="e.g. refund for damaged card on Manapool"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   data-testid="input-sale-description"
@@ -96,11 +103,13 @@ export default function Sales() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="sale-amount">Amount ($)</Label>
+                  <Label htmlFor="sale-amount">
+                    Amount ($)
+                    <span className="ml-1.5 text-xs text-muted-foreground">negative = refund</span>
+                  </Label>
                   <Input
                     id="sale-amount"
                     type="number"
-                    min="0"
                     step="0.01"
                     placeholder="0.00"
                     value={amount}
@@ -123,7 +132,7 @@ export default function Sales() {
                 <Label htmlFor="sale-notes">Notes <span className="text-muted-foreground text-xs">(optional)</span></Label>
                 <Input
                   id="sale-notes"
-                  placeholder="e.g. cash, paid via Venmo, etc."
+                  placeholder="e.g. Manapool order #1234, buyer requested refund"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
@@ -134,7 +143,7 @@ export default function Sales() {
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
               <Button onClick={handleSubmit} disabled={createSale.isPending} data-testid="button-save-sale">
-                {createSale.isPending ? "Saving…" : "Save sale"}
+                {createSale.isPending ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -142,25 +151,46 @@ export default function Sales() {
       </div>
 
       {!isLoading && sales && sales.length > 0 && (
-        <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <HandCoins className="h-5 w-5 text-primary" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <HandCoins className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className={`text-2xl font-bold font-mono ${netTotal < 0 ? "text-destructive" : ""}`}>
+                    {formatCurrency(netTotal)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">net across {sales.length} entries</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-bold font-mono">{formatCurrency(totalRevenue)}</p>
-                <p className="text-xs text-muted-foreground">{sales.length} manual sale{sales.length !== 1 ? "s" : ""} recorded</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+          {refundCount > 0 && (
+            <Card className="bg-destructive/5 border-destructive/20">
+              <CardContent className="py-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                    <CornerDownLeft className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold font-mono text-destructive">
+                      {formatCurrency((sales ?? []).filter((s) => s.amount < 0).reduce((sum, s) => sum + s.amount, 0))}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{refundCount} refund{refundCount !== 1 ? "s" : ""} recorded</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Sale history</CardTitle>
-          <CardDescription>These are counted as revenue in your dashboard.</CardDescription>
+          <CardTitle className="text-base">History</CardTitle>
+          <CardDescription>Sales and refunds counted in your dashboard totals.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -172,8 +202,8 @@ export default function Sales() {
           ) : !sales || sales.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground">
               <HandCoins className="h-10 w-10 mx-auto mb-4 opacity-30" />
-              <h3 className="font-medium text-foreground">No sales yet</h3>
-              <p className="text-sm mt-1">Hit "Record sale" to log your first manual sale.</p>
+              <h3 className="font-medium text-foreground">No entries yet</h3>
+              <p className="text-sm mt-1">Record a sale or a refund to get started.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -193,9 +223,16 @@ export default function Sales() {
                       <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
                         {format(new Date(sale.date), "MMM d, yyyy")}
                       </TableCell>
-                      <TableCell className="font-medium">{sale.description}</TableCell>
+                      <TableCell className="font-medium">
+                        {sale.amount < 0 && (
+                          <span className="inline-flex items-center gap-1 text-xs text-destructive bg-destructive/10 rounded px-1.5 py-0.5 mr-2">
+                            <CornerDownLeft className="h-3 w-3" /> refund
+                          </span>
+                        )}
+                        {sale.description}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{sale.notes ?? "—"}</TableCell>
-                      <TableCell className="text-right font-mono font-bold text-primary">
+                      <TableCell className={`text-right font-mono font-bold ${sale.amount < 0 ? "text-destructive" : "text-primary"}`}>
                         {formatCurrency(sale.amount)}
                       </TableCell>
                       <TableCell>

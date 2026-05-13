@@ -82,12 +82,21 @@ async function getAccessToken(): Promise<string> {
 interface EbayOrderRaw {
   orderId: string;
   creationDate: string;
+  orderFulfillmentStatus?: string;
+  cancelStatus?: { cancelState?: string };
   lineItems?: Array<unknown>;
   pricingSummary?: {
     total?: { value?: string };
     deliveryCost?: { value?: string };
     priceSubtotal?: { value?: string };
   };
+}
+
+function isActiveOrder(o: EbayOrderRaw): boolean {
+  // Skip cancelled orders — they don't count as revenue
+  if (o.cancelStatus?.cancelState === "CANCEL_COMPLETE") return false;
+  if (o.orderFulfillmentStatus === "NOT_STARTED" && o.cancelStatus?.cancelState) return false;
+  return true;
 }
 
 async function fetchAllOrders(token: string): Promise<EbayOrderRaw[]> {
@@ -110,7 +119,7 @@ async function fetchAllOrders(token: string): Promise<EbayOrderRaw[]> {
     if (page.length < limit) break;
     offset += limit;
   }
-  return orders;
+  return orders.filter(isActiveOrder);
 }
 
 /** Returns the eBay OAuth authorization URL for the user to visit */
