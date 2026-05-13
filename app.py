@@ -262,8 +262,8 @@ st.title("🃏 ManaPick")
 st.caption("Pick & pack helper for Manapool sellers — sorted the way your physical box is.")
 
 _qp = st.query_params
-_default_email = _qp.get("mp_email", "") or ""
-_default_token = _qp.get("mp_token", "") or ""
+_default_email = _qp.get("mp_email", "") or os.environ.get("MANAPOOL_EMAIL", "")
+_default_token = _qp.get("mp_token", "") or os.environ.get("MANAPOOL_API_KEY", "")
 
 with st.sidebar:
     st.header("Settings")

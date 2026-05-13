@@ -16,38 +16,31 @@ export function useOrders() {
 
 export function useSyncOrders() {
   const queryClient = useQueryClient();
-  
-  return useMutation<{ message: string; upserted: number; total: number }, Error, { email: string; token: string }>({
-    mutationFn: async (data) => {
-      const res = await fetch(`${getBaseUrl()}/api/manapool/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+
+  return useMutation<{ message: string; upserted: number; total: number }, Error, void>({
+    mutationFn: async () => {
+      const res = await fetch(`${getBaseUrl()}/api/manapool/sync`, { method: "POST" });
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || "Failed to sync orders");
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Failed to sync orders");
       }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly"] });
     },
   });
 }
 
 export function useInspectOrder() {
-  return useMutation<unknown, Error, { email: string; token: string }>({
-    mutationFn: async (data) => {
-      const res = await fetch(`${getBaseUrl()}/api/manapool/inspect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
+  return useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      const res = await fetch(`${getBaseUrl()}/api/manapool/inspect`, { method: "POST" });
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || "Inspect failed");
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Inspect failed");
       }
       return res.json();
     },

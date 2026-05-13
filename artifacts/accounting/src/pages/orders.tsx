@@ -4,7 +4,6 @@ import { RefreshCw, Search } from "lucide-react";
 
 import { useOrders, useSyncOrders, useInspectOrder } from "@/hooks/use-orders";
 import { useEbayOrders, useSyncEbayOrders, useEbayAuthUrl } from "@/hooks/use-ebay";
-import { useCredentials } from "@/lib/credentials-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -39,16 +38,10 @@ export default function Orders() {
   const { data: ebayAuthData } = useEbayAuthUrl();
 
   const { toast } = useToast();
-  const { email, token } = useCredentials();
-
-  const [inspectResult, setInspectResult] = useState<unknown>(null);
+  const [inspectResult, setInspectResult] = useState<Record<string, unknown> | null>(null);
 
   const handleMpSync = () => {
-    if (!email || !token) {
-      toast({ variant: "destructive", title: "Missing credentials", description: "Enter your Manapool email and API key in the sidebar." });
-      return;
-    }
-    syncOrders.mutate({ email, token }, {
+    syncOrders.mutate(undefined, {
       onSuccess: (data) => toast({ title: "Sync complete", description: data.message }),
       onError: (err) => toast({ variant: "destructive", title: "Sync failed", description: err.message }),
     });
@@ -80,13 +73,9 @@ export default function Orders() {
               variant="outline"
               size="sm"
               onClick={() => {
-                if (!email || !token) {
-                  toast({ variant: "destructive", title: "Enter credentials in the sidebar first" });
-                  return;
-                }
-                inspectOrder.mutate({ email, token }, {
+                inspectOrder.mutate(undefined, {
                   onSuccess: (data) => {
-                    setInspectResult(data);
+                    setInspectResult(data as Record<string, unknown>);
                     toast({ title: "Inspect complete — see panel below" });
                   },
                   onError: (err) => toast({ variant: "destructive", title: "Inspect failed", description: err.message }),
@@ -142,7 +131,7 @@ export default function Orders() {
         ))}
       </div>
 
-      {/* Inspect panel (Manapool only) */}
+      {/* Inspect panel */}
       {activeTab === "manapool" && inspectResult && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
           <div className="px-4 pt-3 pb-2 flex items-center justify-between">
@@ -169,7 +158,7 @@ export default function Orders() {
               <div className="py-16 text-center text-muted-foreground">
                 <RefreshCw className="h-10 w-10 mx-auto text-muted mb-4 opacity-50" />
                 <h3 className="font-medium text-foreground">No orders synced</h3>
-                <p className="text-sm mt-1 mb-4 max-w-sm mx-auto">Enter credentials in the sidebar, then sync to start tracking revenue.</p>
+                <p className="text-sm mt-1 mb-4 max-w-sm mx-auto">Click sync to pull in your Manapool orders.</p>
                 <Button variant="outline" onClick={handleMpSync} disabled={syncOrders.isPending}>
                   Start initial sync
                 </Button>
@@ -228,9 +217,16 @@ export default function Orders() {
               <div className="py-16 text-center text-muted-foreground">
                 <RefreshCw className="h-10 w-10 mx-auto text-muted mb-4 opacity-50" />
                 <h3 className="font-medium text-foreground">No eBay orders synced</h3>
-                <p className="text-sm mt-1 mb-4 max-w-sm mx-auto">Click "Sync eBay Orders" to pull in your sales history.</p>
+                <p className="text-sm mt-1 mb-4 max-w-sm mx-auto">
+                  {ebayAuthData?.url ? "Connect your eBay account first, then sync." : "Click sync to pull in your eBay orders."}
+                </p>
+                {ebayAuthData?.url && (
+                  <Button variant="outline" size="sm" className="mb-3" asChild>
+                    <a href={ebayAuthData.url} target="_blank" rel="noreferrer">Connect eBay Account</a>
+                  </Button>
+                )}
                 <Button variant="outline" onClick={handleEbaySync} disabled={syncEbay.isPending}>
-                  Start initial sync
+                  Sync eBay Orders
                 </Button>
               </div>
             ) : (

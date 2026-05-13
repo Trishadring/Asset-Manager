@@ -1,12 +1,20 @@
 import { Router, type IRouter } from "express";
 import { desc, sql } from "drizzle-orm";
-import { z } from "zod";
 import { db, manapoolOrdersTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 const MANAPOOL_BASE = "https://manapool.com/api/v1";
+
+function getCredentials(): { email: string; token: string } {
+  const email = process.env["MANAPOOL_EMAIL"] ?? "";
+  const token = process.env["MANAPOOL_API_KEY"] ?? "";
+  if (!email || !token) {
+    throw new Error("MANAPOOL_EMAIL or MANAPOOL_API_KEY not configured as secrets.");
+  }
+  return { email, token };
+}
 
 function manapoolHeaders(email: string, token: string) {
   return {
@@ -16,7 +24,6 @@ function manapoolHeaders(email: string, token: string) {
   };
 }
 
-/** Fetch a single order's detail from Manapool. Returns null on error. */
 async function fetchOrderDetail(
   orderId: string,
   email: string,
@@ -28,7 +35,6 @@ async function fetchOrderDetail(
     });
     if (!resp.ok) return null;
     const body = (await resp.json()) as Record<string, unknown>;
-    // Detail is wrapped in { order: { ... } }
     return (body.order as Record<string, unknown> | undefined) ?? body;
   } catch {
     return null;
@@ -43,21 +49,16 @@ router.get("/orders", async (_req, res): Promise<void> => {
   res.json(rows);
 });
 
-const CredBody = z.object({
-  email: z.string().email(),
-  token: z.string().min(1),
-});
-
-/** Debug: returns raw list + detail structure for one order */
 router.post("/manapool/inspect", async (req, res): Promise<void> => {
-  const parsed = CredBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  let email: string, token: string;
+  try {
+    ({ email, token } = getCredentials());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
     return;
   }
-  const { email, token } = parsed.data;
-  const headers = manapoolHeaders(email, token);
 
+  const headers = manapoolHeaders(email, token);
   const listResp = await fetch(`${MANAPOOL_BASE}/seller/orders?limit=1&offset=0`, { headers });
   if (!listResp.ok) {
     res.status(listResp.status).json({ error: `Manapool list error: ${listResp.statusText}` });
@@ -75,20 +76,20 @@ router.post("/manapool/inspect", async (req, res): Promise<void> => {
   const detail = orderId ? await fetchOrderDetail(orderId, email, token) : null;
 
   req.log.info({ listOrderKeys: Object.keys(firstOrder), listOrder: firstOrder, detailKeys: detail ? Object.keys(detail) : [], detail }, "Manapool inspect result");
-
   res.json({ listOrder: firstOrder, detail });
 });
 
 router.post("/manapool/sync", async (req, res): Promise<void> => {
-  const parsed = CredBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  let email: string, token: string;
+  try {
+    ({ email, token } = getCredentials());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
     return;
   }
-  const { email, token } = parsed.data;
+
   const headers = manapoolHeaders(email, token);
 
-  // 1. Fetch full order list
   let pageOrders: Record<string, unknown>[] = [];
   let offset = 0;
   const limit = 100;
@@ -117,8 +118,6 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     return;
   }
 
-  // 2. Fetch order detail for each order to get fee + net data
-  //    Log the first detail's keys so we can verify the field names.
   let loggedDetail = false;
   let upserted = 0;
 
@@ -129,7 +128,6 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     const gross = centsToAmount(o.total_cents);
     const date = o.created_at ? new Date(String(o.created_at)) : new Date();
 
-    // Fetch detail to get fee and net fields
     const detail = await fetchOrderDetail(id, email, token);
 
     if (!loggedDetail && detail) {
@@ -140,7 +138,6 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
       loggedDetail = true;
     }
 
-    // Extract shipping/fee/net from detail.payment (per OpenAPI spec)
     const payment = detail
       ? (detail.payment as Record<string, unknown> | undefined)
       : undefined;
@@ -163,7 +160,6 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
         set: {
           date,
           grossTotal: gross,
-          // Only overwrite payment fields if we got a valid detail response
           shippingTotal: shipping !== null ? shipping : sql`${manapoolOrdersTable.shippingTotal}`,
           platformFees: fees !== null ? fees : sql`${manapoolOrdersTable.platformFees}`,
           netPayout: net !== null ? net : sql`${manapoolOrdersTable.netPayout}`,
@@ -180,13 +176,11 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   });
 });
 
-/** Convert a cents value (integer) to a dollar amount. Returns 0 for missing/invalid. */
 function centsToAmount(v: unknown): number {
   if (v === undefined || v === null) return 0;
   const n = Number(v);
   if (Number.isNaN(n)) return 0;
   return n / 100;
 }
-
 
 export default router;

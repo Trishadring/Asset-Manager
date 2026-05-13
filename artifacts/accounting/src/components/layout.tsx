@@ -5,17 +5,10 @@ import {
   ListOrdered,
   PackageSearch,
   HandCoins,
-  Check,
-  Save,
 } from "lucide-react";
-import { useCredentials } from "@/lib/credentials-context";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { email, token, setEmail, setToken, save, saved } = useCredentials();
 
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -67,41 +60,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span>ManaPick</span>
           </Link>
         </nav>
-
-        {/* Manapool credentials — shared across Orders sync and ManaPick */}
-        <div className="hidden md:block mt-auto p-4 border-t border-sidebar-border space-y-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Manapool Credentials</p>
-          <div className="space-y-1">
-            <Label htmlFor="sidebar-email" className="text-xs text-sidebar-foreground">Seller Email</Label>
-            <Input
-              id="sidebar-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="h-8 text-xs bg-sidebar-accent/30 border-sidebar-border"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="sidebar-token" className="text-xs text-sidebar-foreground">API Key</Label>
-            <Input
-              id="sidebar-token"
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="••••••••"
-              className="h-8 text-xs bg-sidebar-accent/30 border-sidebar-border"
-            />
-          </div>
-          <Button
-            size="sm"
-            className="w-full h-8 text-xs"
-            onClick={save}
-            variant={saved ? "outline" : "default"}
-          >
-            {saved ? <><Check size={12} className="mr-1" /> Saved</> : <><Save size={12} className="mr-1" /> Save credentials</>}
-          </Button>
-        </div>
       </aside>
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {location === "/manapick" ? (

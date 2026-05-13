@@ -1,16 +1,9 @@
 import { useState } from "react";
-import { useCredentials } from "@/lib/credentials-context";
 import { ExternalLink, AlertCircle } from "lucide-react";
 
 export default function ManaPick() {
-  const { email, token } = useCredentials();
   const [iframeError, setIframeError] = useState(false);
-
-  const params = new URLSearchParams();
-  if (email) params.set("mp_email", email);
-  if (token) params.set("mp_token", token);
-  const query = params.toString();
-  const src = query ? `/?${query}` : "/";
+  const src = "/";
 
   return (
     <div className="flex-1 flex flex-col min-h-0" style={{ height: "100vh" }}>
@@ -29,7 +22,6 @@ export default function ManaPick() {
         </div>
       ) : (
         <iframe
-          key={src}
           src={src}
           className="flex-1 w-full border-0"
           style={{ height: "100%" }}
