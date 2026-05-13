@@ -12,7 +12,7 @@ router.get("/sales", async (_req, res): Promise<void> => {
 
 const CreateSaleBody = z.object({
   description: z.string().min(1),
-  amount: z.number().positive(),
+  amount: z.number().refine((n) => n !== 0, { message: "Amount must be non-zero" }),
   date: z.string().optional(),
   notes: z.string().optional(),
 });
