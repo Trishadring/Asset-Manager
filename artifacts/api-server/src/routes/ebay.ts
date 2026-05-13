@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 
 const SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly",
-  "https://api.ebay.com/oauth/api_scope/sell.finances.readonly",
+  // sell.finances.readonly can be added once enabled on the eBay RuName
 ].join(" ");
 
 const router: IRouter = Router();
