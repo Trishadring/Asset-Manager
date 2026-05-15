@@ -23,6 +23,9 @@ const queryClient = new QueryClient({
 function LoginGate({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated, login } = useAuth();
 
+  // Skip auth in development — preview is only accessible to the developer
+  if (import.meta.env.DEV) return <>{children}</>;
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
