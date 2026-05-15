@@ -255,11 +255,6 @@ if "shipped" not in st.session_state:
 api_key = os.environ.get("MANAPOOL_API_KEY", "")
 seller_email = os.environ.get("MANAPOOL_EMAIL", "")
 
-# We add simple text inputs just in case the environment variables aren't set
-with st.expander("⚙️ Settings", expanded=not (api_key and seller_email)):
-    api_key = st.text_input("Manapool API Key", value=api_key, type="password")
-    seller_email = st.text_input("Seller Email", value=seller_email)
-
 col_fetch, col_cache, _ = st.columns([2, 1, 5])
 with col_fetch:
     fetch_btn = st.button(
