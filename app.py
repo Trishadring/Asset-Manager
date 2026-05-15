@@ -261,23 +261,16 @@ def color_sort_index(label: str) -> int:
 st.title("🃏 ManaPick")
 st.caption("Pick & pack helper for Manapool sellers — sorted the way your physical box is.")
 
-_qp = st.query_params
-_default_email = _qp.get("mp_email", "") or os.environ.get("MANAPOOL_EMAIL", "")
-_default_token = _qp.get("mp_token", "") or os.environ.get("MANAPOOL_API_KEY", "")
+api_key = os.environ.get("MANAPOOL_API_KEY", "")
+seller_email = os.environ.get("MANAPOOL_EMAIL", "")
 
-with st.sidebar:
-    st.header("Settings")
-    api_key = st.text_input("MANAPOOL_API_KEY", type="password",
-                            value=_default_token,
-                            help="Your Manapool seller API key.")
-    seller_email = st.text_input("Seller email",
-                                 value=_default_email,
-                                 help="The email on your Manapool account.")
+col_fetch, col_cache, _ = st.columns([2, 1, 5])
+with col_fetch:
     fetch_btn = st.button("Fetch Paid / Unshipped Orders", type="primary",
                           use_container_width=True,
                           disabled=not (api_key and seller_email))
-    st.divider()
-    if st.button("Clear card cache", use_container_width=True):
+with col_cache:
+    if st.button("Clear cache", use_container_width=True):
         scryfall_lookup.clear()
         st.success("Cache cleared.")
 
@@ -320,7 +313,7 @@ if fetch_btn:
 
 master = st.session_state.master
 if not master:
-    st.info("Enter your API key in the sidebar and fetch orders to begin.")
+    st.info("Click **Fetch Paid / Unshipped Orders** to begin.")
     st.stop()
 
 # Bucket everything
