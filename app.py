@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
-import re 
+import re
 import time
+from datetime import datetime
 from collections import defaultdict
 from typing import Any
 
@@ -140,13 +141,16 @@ def consolidate_orders(orders: list[dict]) -> dict[tuple, dict]:
 # Scryfall & Sorting                                                          #
 # --------------------------------------------------------------------------- #
 @st.cache_data(show_spinner=False)
-def fetch_scryfall_sets() -> dict[str, str]:
+def fetch_scryfall_sets() -> dict[str, dict]:
     """Fetch sets to sort by release date (newest first)."""
     try:
         r = requests.get(f"{SCRYFALL_BASE}/sets", timeout=15)
         if r.status_code == 200:
             return {
-                s["code"].lower(): s.get("released_at", "1990-01-01")
+                s["code"].lower(): {
+                    "name": s.get("name", s["code"].upper()),
+                    "released_at": s.get("released_at", "1900-01-01"),
+                }
                 for s in r.json().get("data", [])
             }
     except requests.RequestException:
@@ -556,15 +560,25 @@ for key, entry in master.items():
     sets_dict[entry["set"]].append((key, entry))
 
 scryfall_sets_map = fetch_scryfall_sets()
-import logging
+
 # Sort Sets by Release Date (Newest First)
 sorted_set_codes = sorted(
-    
-    sets_dict.keys(), key=lambda s: scryfall_sets_map.get(s, "1900-01-01"), reverse=True
+    sets_dict.keys(),
+    key=lambda s: scryfall_sets_map.get(s, {}).get("released_at", "1900-01-01"),
+    reverse=True,
 )
 
 for set_code in sorted_set_codes:
-    st.header(f"Set: {set_code.upper()}")
+    set_info = scryfall_sets_map.get(set_code, {})
+    set_name = set_info.get("name", set_code.upper())
+    released_at = set_info.get("released_at", "")
+    try:
+        released_label = datetime.strptime(released_at, "%Y-%m-%d").strftime("%b %d, %Y") if released_at else ""
+    except ValueError:
+        released_label = released_at
+    subtitle = f"{set_code.upper()} · Released {released_label}" if released_label else set_code.upper()
+    st.header(set_name)
+    st.caption(subtitle)
 
     # Sort cards within the set by Color -> Collector Number
     cards = sets_dict[set_code]
