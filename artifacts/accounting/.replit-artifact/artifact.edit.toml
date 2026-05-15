@@ -1,0 +1,48 @@
+kind = "web"
+previewPath = "/accounting/"
+title = "TCG Accounting"
+version = "1.0.0"
+id = "artifacts/accounting"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/accounting/" ]
+localPort = 24339
+
+[services.development]
+run = "pnpm --filter @workspace/accounting run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/accounting", "run", "build" ]
+publicDir = "artifacts/accounting/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/**"
+to = "/index.html"
+
+[services.env]
+PORT = "24339"
+BASE_PATH = "/accounting/"
+
+[[services]]
+name = "manapick"
+paths = [ "/" ]
+localPort = 5000
+
+[services.production.run]
+args = [
+  "streamlit", "run", "app.py",
+  "--server.port", "5000",
+  "--server.headless", "true",
+  "--server.enableCORS", "false",
+  "--server.enableXsrfProtection", "false"
+]
+
+[services.production.health.startup]
+path = "/_stcore/health"
