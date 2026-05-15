@@ -3,7 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Loader2, RefreshCw, Package, ShoppingBag, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  Package,
+  ShoppingBag,
+  CheckCircle2,
+} from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -15,7 +21,9 @@ interface ScryfallCard {
   set: string;
   collector_number: string;
   image_uris?: { normal?: string; large?: string; small?: string };
-  card_faces?: Array<{ image_uris?: { normal?: string; large?: string; small?: string } }>;
+  card_faces?: Array<{
+    image_uris?: { normal?: string; large?: string; small?: string };
+  }>;
 }
 
 interface MasterEntry {
@@ -30,17 +38,32 @@ interface MasterEntry {
 }
 
 interface ShippingAddress {
-  name?: string; line1?: string; line2?: string; line3?: string;
-  city?: string; state?: string; postal_code?: string; country?: string;
+  name?: string;
+  line1?: string;
+  line2?: string;
+  line3?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
 }
 
 interface OrderItem {
   quantity?: number;
-  product?: { single?: { name?: string; set?: string; number?: string; finish_id?: string; scryfall_id?: string } };
+  product?: {
+    single?: {
+      name?: string;
+      set?: string;
+      number?: string;
+      finish_id?: string;
+      scryfall_id?: string;
+    };
+  };
 }
 
 interface Order {
-  id: string; label?: string;
+  id: string;
+  label?: string;
   shipping_address?: ShippingAddress;
   shipping_method?: string;
   items?: OrderItem[];
@@ -51,13 +74,29 @@ type SetsMap = Record<string, { name: string; released_at: string }>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const FINISH_LABELS: Record<string, string> = { NF: "nonfoil", FO: "foil", EF: "etched" };
+const FINISH_LABELS: Record<string, string> = {
+  NF: "nonfoil",
+  FO: "foil",
+  EF: "etched",
+};
 
 function cardImage(card?: ScryfallCard): string | null {
   if (!card) return null;
-  if (card.image_uris) return card.image_uris.normal ?? card.image_uris.large ?? card.image_uris.small ?? null;
+  if (card.image_uris)
+    return (
+      card.image_uris.normal ??
+      card.image_uris.large ??
+      card.image_uris.small ??
+      null
+    );
   const face = card.card_faces?.[0];
-  if (face?.image_uris) return face.image_uris.normal ?? face.image_uris.large ?? face.image_uris.small ?? null;
+  if (face?.image_uris)
+    return (
+      face.image_uris.normal ??
+      face.image_uris.large ??
+      face.image_uris.small ??
+      null
+    );
   return null;
 }
 
@@ -67,7 +106,9 @@ function colorSortIndex(card?: ScryfallCard): number {
   const c = card.colors ?? [];
   if (c.length === 0) return 7;
   if (c.length > 1) return 6;
-  return ({ W: 1, U: 2, B: 3, R: 4, G: 5 } as Record<string, number>)[c[0]!] ?? 9;
+  return (
+    ({ W: 1, U: 2, B: 3, R: 4, G: 5 } as Record<string, number>)[c[0]!] ?? 9
+  );
 }
 
 function parseCollectorNumber(cn: string): [number, string] {
@@ -76,26 +117,50 @@ function parseCollectorNumber(cn: string): [number, string] {
 }
 
 function formatDate(iso: string): string {
-  try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
-  catch { return iso; }
+  try {
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CardItem({
-  cardKey, entry, orderToBin, picked, onToggle,
+  cardKey,
+  entry,
+  orderToBin,
+  picked,
+  onToggle,
 }: {
-  cardKey: string; entry: MasterEntry; orderToBin: Record<string, number>;
-  picked: Record<string, boolean>; onToggle: (pk: string) => void;
+  cardKey: string;
+  entry: MasterEntry;
+  orderToBin: Record<string, number>;
+  picked: Record<string, boolean>;
+  onToggle: (pk: string) => void;
 }) {
   const img = cardImage(entry.scryfall);
-  const allPicked = Object.keys(entry.allocations).every((oid) => picked[`${cardKey}|${oid}`]);
+  const allPicked = Object.keys(entry.allocations).every(
+    (oid) => picked[`${cardKey}|${oid}`],
+  );
   const isFormatted = entry.finish === "foil" || entry.finish === "etched";
 
   return (
-    <div className={`flex flex-col gap-1 transition-opacity duration-200 ${allPicked ? "opacity-30" : ""}`}>
+    <div
+      className={`flex flex-col gap-1 transition-opacity duration-200 ${allPicked ? "opacity-30" : ""}`}
+    >
       {/* Card image */}
-      <div className={isFormatted ? "p-0.5 rounded-xl bg-gradient-to-br from-yellow-300 via-pink-400 via-cyan-300 to-green-300" : ""}>
+      <div
+        className={
+          isFormatted
+            ? "p-0.5 rounded-xl bg-gradient-to-br from-yellow-300 via-pink-400 via-cyan-300 to-green-300"
+            : ""
+        }
+      >
         {img ? (
           <img src={img} alt={entry.name} className="w-full rounded-xl block" />
         ) : (
@@ -107,10 +172,18 @@ function CardItem({
 
       {/* Name + set */}
       <div className="text-xs leading-tight mt-0.5">
-        <p className={`font-semibold truncate ${allPicked ? "line-through text-muted-foreground" : ""}`}>{entry.name}</p>
+        <p
+          className={`font-semibold truncate ${allPicked ? "line-through text-muted-foreground" : ""}`}
+        >
+          {entry.name}
+        </p>
         <p className="text-muted-foreground">
           {entry.set.toUpperCase()} #{entry.collector_number}
-          {entry.finish === "foil" ? " ✨" : entry.finish === "etched" ? " 🔮" : ""}
+          {entry.finish === "foil"
+            ? " ✨"
+            : entry.finish === "etched"
+              ? " 🔮"
+              : ""}
         </p>
       </div>
 
@@ -168,18 +241,24 @@ export default function ManaPick() {
       ]);
 
       if (!ordersRes.ok) {
-        const body = await ordersRes.json().catch(() => ({})) as { error?: string };
+        const body = (await ordersRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
         throw new Error(body.error ?? `HTTP ${ordersRes.status}`);
       }
 
-      const { orders: rawOrders, master: rawMaster } = await ordersRes.json() as {
-        orders: Order[]; master: Master;
-      };
-      const { sets: rawSets } = await setsRes.json() as { sets: SetsMap };
+      const { orders: rawOrders, master: rawMaster } =
+        (await ordersRes.json()) as {
+          orders: Order[];
+          master: Master;
+        };
+      const { sets: rawSets } = (await setsRes.json()) as { sets: SetsMap };
 
       // Assign bin numbers
       const binMap: Record<string, number> = {};
-      rawOrders.forEach((o, i) => { binMap[o.id] = i + 1; });
+      rawOrders.forEach((o, i) => {
+        binMap[o.id] = i + 1;
+      });
 
       setOrders(rawOrders);
       setMaster(rawMaster);
@@ -197,7 +276,13 @@ export default function ManaPick() {
 
       const identifiers = cardKeys.map((key) => {
         const e = rawMaster[key]!;
-        return { key, scryfall_id: e.scryfall_id, set: e.set, collector_number: e.collector_number, name: e.name };
+        return {
+          key,
+          scryfall_id: e.scryfall_id,
+          set: e.set,
+          collector_number: e.collector_number,
+          name: e.name,
+        };
       });
 
       // Batch in chunks of 75
@@ -212,11 +297,18 @@ export default function ManaPick() {
             body: JSON.stringify({ identifiers: batch }),
           });
           if (r.ok) {
-            const { results } = await r.json() as { results: Record<string, ScryfallCard> };
+            const { results } = (await r.json()) as {
+              results: Record<string, ScryfallCard>;
+            };
             Object.assign(allResults, results);
           }
-        } catch { /* continue on error */ }
-        setEnrichProgress({ done: Math.min(i + BATCH, identifiers.length), total: identifiers.length });
+        } catch {
+          /* continue on error */
+        }
+        setEnrichProgress({
+          done: Math.min(i + BATCH, identifiers.length),
+          total: identifiers.length,
+        });
       }
 
       // Merge scryfall data into master
@@ -228,7 +320,6 @@ export default function ManaPick() {
         return next;
       });
       setEnrichProgress({ done: 0, total: 0 });
-
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
@@ -243,7 +334,8 @@ export default function ManaPick() {
   // ── Metrics ───────────────────────────────────────────────────────────────
 
   const { totalCards, pickedCards } = useMemo(() => {
-    let total = 0, picked_ = 0;
+    let total = 0,
+      picked_ = 0;
     for (const [key, entry] of Object.entries(master)) {
       for (const [oid, qty] of Object.entries(entry.allocations)) {
         total += qty;
@@ -294,7 +386,7 @@ export default function ManaPick() {
         body: JSON.stringify({ tracking_number: tn }),
       });
       if (!r.ok) {
-        const body = await r.json().catch(() => ({})) as { error?: string };
+        const body = (await r.json().catch(() => ({}))) as { error?: string };
         alert(`Failed: ${body.error ?? r.status}`);
         return;
       }
@@ -312,18 +404,32 @@ export default function ManaPick() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">ManaPick</h1>
-          <p className="text-sm text-muted-foreground">Pick &amp; pack helper — sorted by set, color, and collector number</p>
+          <p className="text-sm text-muted-foreground">
+            Pick &amp; pack helper — sorted by set, color, and collector number
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={fetchOrders} disabled={loading} size="sm">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            <span className="ml-1">{loading ? "Fetching…" : isEmpty ? "Fetch Orders" : "Refresh"}</span>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="ml-1">
+              {loading ? "Fetching…" : isEmpty ? "Fetch Orders" : "Refresh"}
+            </span>
           </Button>
           {!isEmpty && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setOrders([]); setMaster({}); setPicked({}); setShipped({}); setOrderToBin({}); }}
+              onClick={() => {
+                setOrders([]);
+                setMaster({});
+                setPicked({});
+                setShipped({});
+                setOrderToBin({});
+              }}
             >
               Clear
             </Button>
@@ -344,7 +450,9 @@ export default function ManaPick() {
           <p className="text-sm text-muted-foreground">
             Enriching card data… {enrichProgress.done}/{enrichProgress.total}
           </p>
-          <Progress value={(enrichProgress.done / enrichProgress.total) * 100} />
+          <Progress
+            value={(enrichProgress.done / enrichProgress.total) * 100}
+          />
         </div>
       )}
 
@@ -352,7 +460,10 @@ export default function ManaPick() {
       {!loading && isEmpty && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
           <ShoppingBag className="h-12 w-12 opacity-20" />
-          <p className="text-sm">Click <strong>Fetch Orders</strong> to load your paid, unshipped Manapool orders.</p>
+          <p className="text-sm">
+            Click <strong>Fetch Orders</strong> to load your paid, unshipped
+            Manapool orders.
+          </p>
         </div>
       )}
 
@@ -366,7 +477,10 @@ export default function ManaPick() {
               { label: "Picked", value: pickedCards },
               { label: "Orders", value: orders.length },
             ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg border bg-card p-3 text-center">
+              <div
+                key={label}
+                className="rounded-lg border bg-card p-3 text-center"
+              >
                 <p className="text-2xl font-bold tabular-nums">{value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
               </div>
@@ -374,7 +488,10 @@ export default function ManaPick() {
           </div>
 
           {totalCards > 0 && (
-            <Progress value={(pickedCards / totalCards) * 100} className="h-2" />
+            <Progress
+              value={(pickedCards / totalCards) * 100}
+              className="h-2"
+            />
           )}
 
           {/* Phase toggle */}
@@ -403,9 +520,14 @@ export default function ManaPick() {
               {setGroups.map(({ setCode, setInfo, cards }) => (
                 <div key={setCode}>
                   <div className="mb-3">
-                    <h2 className="text-lg font-bold">{setInfo?.name ?? setCode.toUpperCase()}</h2>
+                    <h2 className="text-lg font-bold">
+                      {setInfo?.name ?? setCode.toUpperCase()}
+                    </h2>
                     <p className="text-xs text-muted-foreground">
-                      {setCode.toUpperCase()}{setInfo?.released_at ? ` · Released ${formatDate(setInfo.released_at)}` : ""}
+                      {setCode.toUpperCase()}
+                      {setInfo?.released_at
+                        ? ` · Released ${formatDate(setInfo.released_at)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
@@ -430,86 +552,129 @@ export default function ManaPick() {
             <div className="space-y-4">
               {/* Bin reference */}
               <div className="rounded-lg border p-3 text-sm space-y-1">
-                <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Bin Reference</p>
+                <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">
+                  Bin Reference
+                </p>
                 {orders.map((o) => (
                   <div key={o.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-bold text-foreground">Bin {orderToBin[o.id]}</span>
+                    <span className="font-bold text-foreground">
+                      Bin {orderToBin[o.id]}
+                    </span>
                     <span className="text-muted-foreground">·</span>
-                    <span className="font-mono text-muted-foreground">{o.label ?? o.id.slice(0, 8)}</span>
+                    <span className="font-mono text-muted-foreground">
+                      {o.label ?? o.id.slice(0, 8)}
+                    </span>
                     {o.shipping_address?.name && (
-                      <span className="text-muted-foreground">— {o.shipping_address.name}</span>
+                      <span className="text-muted-foreground">
+                        — {o.shipping_address.name}
+                      </span>
                     )}
-                    {shipped[o.id] && <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />}
+                    {shipped[o.id] && (
+                      <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />
+                    )}
                   </div>
                 ))}
               </div>
 
               {/* Order cards */}
-              {orders.filter((o) => !shipped[o.id]).map((order) => {
-                const oid = order.id;
-                const binNum = orderToBin[oid];
-                const addr = order.shipping_address ?? {};
-                const cardCount = (order.items ?? []).filter((i) => i.product?.single).reduce((s, i) => s + (i.quantity ?? 1), 0);
+              {orders
+                .filter((o) => !shipped[o.id])
+                .map((order) => {
+                  const oid = order.id;
+                  const binNum = orderToBin[oid];
+                  const addr = order.shipping_address ?? {};
+                  const cardCount = (order.items ?? [])
+                    .filter((i) => i.product?.single)
+                    .reduce((s, i) => s + (i.quantity ?? 1), 0);
 
-                return (
-                  <div key={oid} className="rounded-lg border bg-card p-4 space-y-4">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <h3 className="font-bold">📦 Bin {binNum} — <span className="font-mono text-sm">{order.label ?? oid.slice(0, 8)}</span></h3>
-                        <p className="text-sm text-muted-foreground">{cardCount} card{cardCount !== 1 ? "s" : ""}</p>
-                        <pre className="text-xs mt-2 bg-muted rounded p-2 whitespace-pre-wrap font-mono leading-snug">
-                          {[addr.name, addr.line1, addr.line2, addr.line3,
-                            `${addr.city ?? ""}, ${addr.state ?? ""} ${addr.postal_code ?? ""}`,
-                            addr.country]
-                            .filter(Boolean).join("\n")}
-                        </pre>
-                        {order.shipping_method && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Shipping: {order.shipping_method.replace(/_/g, " ")}
+                  return (
+                    <div
+                      key={oid}
+                      className="rounded-lg border bg-card p-4 space-y-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <h3 className="font-bold">
+                            📦 Bin {binNum} —{" "}
+                            <span className="font-mono text-sm">
+                              {order.label ?? oid.slice(0, 8)}
+                            </span>
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {cardCount} card{cardCount !== 1 ? "s" : ""}
                           </p>
-                        )}
+                          <pre className="text-xs mt-2 bg-muted rounded p-2 whitespace-pre-wrap font-mono leading-snug">
+                            {[
+                              addr.name,
+                              addr.line1,
+                              addr.line2,
+                              addr.line3,
+                              `${addr.city ?? ""}, ${addr.state ?? ""} ${addr.postal_code ?? ""}`,
+                              addr.country,
+                            ]
+                              .filter(Boolean)
+                              .join("\n")}
+                          </pre>
+                          {order.shipping_method && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Shipping:{" "}
+                              {order.shipping_method.replace(/_/g, " ")}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2 min-w-[200px]">
+                          <Input
+                            placeholder="USPS tracking # (optional)"
+                            value={tracking[oid] ?? ""}
+                            onChange={(e) =>
+                              setTracking((prev) => ({
+                                ...prev,
+                                [oid]: e.target.value,
+                              }))
+                            }
+                            className="text-sm h-8"
+                          />
+                          <Button size="sm" onClick={() => shipOrder(oid)}>
+                            ✓ Mark shipped via USPS
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-2 min-w-[200px]">
-                        <Input
-                          placeholder="USPS tracking # (optional)"
-                          value={tracking[oid] ?? ""}
-                          onChange={(e) => setTracking((prev) => ({ ...prev, [oid]: e.target.value }))}
-                          className="text-sm h-8"
-                        />
-                        <Button size="sm" onClick={() => shipOrder(oid)}>
-                          ✓ Mark shipped via USPS
-                        </Button>
-                      </div>
-                    </div>
 
-                    {/* Card thumbnails */}
-                    <div className="flex flex-wrap gap-2">
-                      {(order.items ?? []).map((item, idx) => {
-                        const single = item.product?.single;
-                        if (!single?.name) return null;
-                        const finishId = String(single.finish_id ?? "");
-                        const finish = FINISH_LABELS[finishId] ?? "nonfoil";
-                        const key = `${single.name}|${(single.set ?? "").toLowerCase()}|${single.number ?? ""}|${finish}`;
-                        const entry = master[key];
-                        const img = cardImage(entry?.scryfall);
-                        const qty = item.quantity ?? 1;
-                        return (
-                          <div key={idx} className="flex flex-col items-center text-xs w-16">
-                            {img ? (
-                              <img src={img} alt={single.name} className="w-full rounded-lg" />
-                            ) : (
-                              <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-center px-1">
-                                {single.name}
-                              </div>
-                            )}
-                            <span className="font-bold">×{qty}</span>
-                          </div>
-                        );
-                      })}
+                      {/* Card thumbnails */}
+                      <div className="flex flex-wrap gap-2">
+                        {(order.items ?? []).map((item, idx) => {
+                          const single = item.product?.single;
+                          if (!single?.name) return null;
+                          const finishId = String(single.finish_id ?? "");
+                          const finish = FINISH_LABELS[finishId] ?? "nonfoil";
+                          const key = `${single.name}|${(single.set ?? "").toLowerCase()}|${single.number ?? ""}|${finish}`;
+                          const entry = master[key];
+                          const img = cardImage(entry?.scryfall);
+                          const qty = item.quantity ?? 1;
+                          return (
+                            <div
+                              key={idx}
+                              className="flex flex-col items-center text-xs w-64"
+                            >
+                              {img ? (
+                                <img
+                                  src={img}
+                                  alt={single.name}
+                                  className="w-full rounded-lg"
+                                />
+                              ) : (
+                                <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-center px-1">
+                                  {single.name}
+                                </div>
+                              )}
+                              <span className="font-bold">×{qty}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
 
               {/* Shipped */}
               {orders.filter((o) => shipped[o.id]).length > 0 && (
@@ -517,12 +682,16 @@ export default function ManaPick() {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                     ✅ Shipped ({orders.filter((o) => shipped[o.id]).length})
                   </p>
-                  {orders.filter((o) => shipped[o.id]).map((o) => (
-                    <p key={o.id} className="text-sm">
-                      Bin {orderToBin[o.id]} — {o.label ?? o.id.slice(0, 8)}
-                      {o.shipping_address?.name ? ` — ${o.shipping_address.name}` : ""}
-                    </p>
-                  ))}
+                  {orders
+                    .filter((o) => shipped[o.id])
+                    .map((o) => (
+                      <p key={o.id} className="text-sm">
+                        Bin {orderToBin[o.id]} — {o.label ?? o.id.slice(0, 8)}
+                        {o.shipping_address?.name
+                          ? ` — ${o.shipping_address.name}`
+                          : ""}
+                      </p>
+                    ))}
                 </div>
               )}
             </div>
