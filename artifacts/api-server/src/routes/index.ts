@@ -7,6 +7,7 @@ import dashboardRouter from "./dashboard";
 import salesRouter from "./sales";
 import ebayNotificationsRouter from "./ebay-notifications";
 import ebayRouter from "./ebay";
+import manapickRouter from "./manapick";
 
 const router: IRouter = Router();
 
@@ -33,5 +34,6 @@ router.use(purchasesRouter);
 router.use(ordersRouter);
 router.use(salesRouter);
 router.use(ebayRouter);
+router.use(manapickRouter);
 
 export default router;
