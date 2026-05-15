@@ -556,9 +556,10 @@ for key, entry in master.items():
     sets_dict[entry["set"]].append((key, entry))
 
 scryfall_sets_map = fetch_scryfall_sets()
-
+import logging
 # Sort Sets by Release Date (Newest First)
 sorted_set_codes = sorted(
+    
     sets_dict.keys(), key=lambda s: scryfall_sets_map.get(s, "1900-01-01"), reverse=True
 )
 
