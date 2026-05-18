@@ -61,7 +61,9 @@ async function getAccessToken(): Promise<string> {
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: SCOPES,
+      // Do not pass `scope` here — eBay returns an access token with whatever
+      // scopes were originally granted. Specifying scopes not in the original
+      // grant causes the entire refresh to fail.
     }),
   });
 
