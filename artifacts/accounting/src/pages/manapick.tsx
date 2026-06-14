@@ -530,9 +530,9 @@ export default function ManaPick() {
                       {setInfo?.name ?? setCode.toUpperCase()}
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      {setCode.toUpperCase()}
+                      {setInfo?.name ? setCode.toUpperCase() : ""}
                       {setInfo?.released_at
-                        ? ` · Released ${formatDate(setInfo.released_at)}`
+                        ? `${setInfo.name ? " · " : ""}Released ${formatDate(setInfo.released_at)}`
                         : ""}
                     </p>
                   </div>
