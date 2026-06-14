@@ -107,25 +107,28 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       }
     }
 
-    // Fetch set info (name + release date) for the sets that appear in this batch of orders
-    const setCodes = [...new Set(Object.values(master).map((e) => e.set).filter(Boolean))];
+    // Fetch all Scryfall sets in one call, then filter to codes in this batch of orders
+    const neededCodes = new Set(Object.values(master).map((e) => e.set).filter(Boolean));
     const sets: Record<string, { name: string; released_at: string }> = {};
-    await Promise.all(
-      setCodes.map(async (code) => {
-        try {
-          const r = await fetch(`${SCRYFALL_BASE}/sets/${encodeURIComponent(code)}`);
-          if (r.ok) {
-            const s = (await r.json()) as Record<string, unknown>;
+    try {
+      const r = await fetch(`${SCRYFALL_BASE}/sets`, {
+        headers: { "User-Agent": "TCGAccounting/1.0" },
+      });
+      if (r.ok) {
+        const body = (await r.json()) as { data?: Array<Record<string, unknown>> };
+        for (const s of body.data ?? []) {
+          const code = String(s["code"] ?? "").toLowerCase();
+          if (neededCodes.has(code)) {
             sets[code] = {
               name: String(s["name"] ?? code),
               released_at: String(s["released_at"] ?? "1900-01-01"),
             };
           }
-        } catch {
-          // leave this set out; client will fall back to the set code
         }
-      }),
-    );
+      }
+    } catch {
+      // sets will be empty; client falls back to set codes for display
+    }
 
     req.log.info({ orders: orders.length, uniqueCards: Object.keys(master).length, sets: Object.keys(sets).length }, "manapick orders fetched");
     res.json({ orders, master, sets });
