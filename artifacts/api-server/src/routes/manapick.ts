@@ -155,13 +155,25 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
 
       const r = await fetch(`${SCRYFALL_BASE}/cards/collection`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "User-Agent": "TCGAccounting/1.0" },
         body: JSON.stringify({ identifiers: sfIds }),
       });
 
+      req.log.info(
+        { status: r.status, batch: batch.length, batchOffset: i },
+        "scryfall /cards/collection response",
+      );
+
       if (r.ok) {
-        const body = (await r.json()) as { data?: Array<Record<string, unknown>> };
-        for (const card of body.data ?? []) {
+        const body = (await r.json()) as {
+          data?: Array<Record<string, unknown>>;
+          not_found?: Array<unknown>;
+        };
+        const found = body.data ?? [];
+        const notFound = body.not_found ?? [];
+        req.log.info({ found: found.length, notFound: notFound.length }, "scryfall results");
+
+        for (const card of found) {
           const matched = batch.find(
             (b) =>
               (b.scryfall_id && b.scryfall_id === card["id"]) ||
@@ -171,10 +183,15 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
           );
           if (matched) results[matched.key] = card;
         }
+      } else {
+        const errText = await r.text().catch(() => "(no body)");
+        req.log.warn({ status: r.status, body: errText }, "scryfall /cards/collection failed");
       }
     }
+    req.log.info({ matched: Object.keys(results).length, total: identifiers.length }, "enrich complete");
     res.json({ results });
   } catch (err) {
+    logger.error(err, "manapick/enrich error");
     res.status(500).json({ error: String(err) });
   }
 });

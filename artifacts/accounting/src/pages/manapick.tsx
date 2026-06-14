@@ -80,24 +80,30 @@ const FINISH_LABELS: Record<string, string> = {
   EF: "etched",
 };
 
-function cardImage(card?: ScryfallCard): string | null {
+/**
+ * Build a Scryfall CDN image URL directly from a scryfall_id.
+ * Pattern: https://cards.scryfall.io/normal/front/{id[0]}/{id[1]}/{id}.jpg
+ * No API call needed — the CDN serves the image immediately.
+ */
+function scryfallDirectUrl(scryfallId?: string): string | null {
+  if (!scryfallId || scryfallId.length < 2) return null;
+  return `https://cards.scryfall.io/normal/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
+}
+
+/** Fallback: extract image from enriched Scryfall API data (used for sorting context). */
+function cardImageFromData(card?: ScryfallCard): string | null {
   if (!card) return null;
   if (card.image_uris)
-    return (
-      card.image_uris.normal ??
-      card.image_uris.large ??
-      card.image_uris.small ??
-      null
-    );
+    return card.image_uris.normal ?? card.image_uris.large ?? card.image_uris.small ?? null;
   const face = card.card_faces?.[0];
   if (face?.image_uris)
-    return (
-      face.image_uris.normal ??
-      face.image_uris.large ??
-      face.image_uris.small ??
-      null
-    );
+    return face.image_uris.normal ?? face.image_uris.large ?? face.image_uris.small ?? null;
   return null;
+}
+
+/** Returns the best image URL for a master entry — direct CDN first, enriched data as fallback. */
+function entryImageUrl(entry: MasterEntry): string | null {
+  return scryfallDirectUrl(entry.scryfall_id) ?? cardImageFromData(entry.scryfall);
 }
 
 function colorSortIndex(card?: ScryfallCard): number {
@@ -143,7 +149,7 @@ function CardItem({
   picked: Record<string, boolean>;
   onToggle: (pk: string) => void;
 }) {
-  const img = cardImage(entry.scryfall);
+  const img = entryImageUrl(entry);
   const allPicked = Object.keys(entry.allocations).every(
     (oid) => picked[`${cardKey}|${oid}`],
   );
@@ -649,7 +655,7 @@ export default function ManaPick() {
                           const finish = FINISH_LABELS[finishId] ?? "nonfoil";
                           const key = `${single.name}|${(single.set ?? "").toLowerCase()}|${single.number ?? ""}|${finish}`;
                           const entry = master[key];
-                          const img = cardImage(entry?.scryfall);
+                          const img = scryfallDirectUrl(single.scryfall_id) ?? (entry ? entryImageUrl(entry) : null);
                           const qty = item.quantity ?? 1;
                           return (
                             <div
