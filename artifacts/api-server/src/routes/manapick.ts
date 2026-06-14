@@ -1,4 +1,7 @@
 import { Router, type IRouter } from "express";
+import { eq } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { manapickPicksTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -249,6 +252,45 @@ router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
     }
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// GET /api/manapick/picks?session=...
+// Load persisted pick state for a session
+router.get("/manapick/picks", async (req, res): Promise<void> => {
+  const session = String(req.query["session"] ?? "").trim();
+  if (!session) { res.json({ picks: {} }); return; }
+  try {
+    const rows = await db.select().from(manapickPicksTable).where(eq(manapickPicksTable.sessionId, session));
+    const picks: Record<string, boolean> = {};
+    for (const r of rows) picks[r.pickKey] = r.picked;
+    res.json({ picks });
+  } catch (err) {
+    logger.error(err, "manapick/picks GET error");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/manapick/picks
+// Upsert a single pick (picked: true/false)
+router.post("/manapick/picks", async (req, res): Promise<void> => {
+  const { session, pickKey, picked } = req.body as { session?: string; pickKey?: string; picked?: boolean };
+  if (!session || !pickKey || typeof picked !== "boolean") {
+    res.status(400).json({ error: "session, pickKey, and picked are required" });
+    return;
+  }
+  try {
+    await db
+      .insert(manapickPicksTable)
+      .values({ sessionId: session, pickKey, picked })
+      .onConflictDoUpdate({
+        target: [manapickPicksTable.sessionId, manapickPicksTable.pickKey],
+        set: { picked, updatedAt: new Date() },
+      });
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error(err, "manapick/picks POST error");
     res.status(500).json({ error: String(err) });
   }
 });

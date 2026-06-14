@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -227,10 +227,14 @@ export default function ManaPick() {
   const [shipped, setShipped] = useState<Record<string, boolean>>({});
   const [phase, setPhase] = useState<Phase>("pick");
   const [tracking, setTracking] = useState<Record<string, string>>({});
+  const [sessionId, setSessionId] = useState<string>("");
 
   const [loading, setLoading] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+
+  // sessionId ref so polling closure always has the current value
+  const sessionIdRef = useRef("");
 
   // ── Fetch orders ──────────────────────────────────────────────────────────
 
@@ -263,13 +267,30 @@ export default function ManaPick() {
         binMap[o.id] = i + 1;
       });
 
+      // Compute a stable session ID from the sorted order IDs
+      const sid = [...rawOrders.map((o) => o.id)].sort().join("|");
+      setSessionId(sid);
+      sessionIdRef.current = sid;
+
       setOrders(rawOrders);
       setMaster(rawMaster);
       setSets(rawSets);
       setOrderToBin(binMap);
-      setPicked({});
       setShipped({});
       setLoading(false);
+
+      // Load persisted pick state for this session
+      try {
+        const picksRes = await fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`);
+        if (picksRes.ok) {
+          const { picks: savedPicks } = (await picksRes.json()) as { picks: Record<string, boolean> };
+          setPicked(savedPicks);
+        } else {
+          setPicked({});
+        }
+      } catch {
+        setPicked({});
+      }
 
       // 2. Enrich cards with Scryfall in background
       const cardKeys = Object.keys(rawMaster);
@@ -331,8 +352,38 @@ export default function ManaPick() {
   }, []);
 
   const togglePick = useCallback((pk: string) => {
-    setPicked((prev) => ({ ...prev, [pk]: !prev[pk] }));
+    setPicked((prev) => {
+      const newVal = !prev[pk];
+      const sid = sessionIdRef.current;
+      if (sid) {
+        fetch("/api/manapick/picks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session: sid, pickKey: pk, picked: newVal }),
+        }).catch(() => {});
+      }
+      return { ...prev, [pk]: newVal };
+    });
   }, []);
+
+  // ── Cross-device sync: poll server picks every 5s during pick phase ────────
+
+  useEffect(() => {
+    const sid = sessionId;
+    if (!sid || phase !== "pick") return;
+    const interval = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`);
+        if (r.ok) {
+          const { picks } = (await r.json()) as { picks: Record<string, boolean> };
+          setPicked(picks);
+        }
+      } catch {
+        // silently ignore poll failures
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [sessionId, phase]);
 
   // ── Metrics ───────────────────────────────────────────────────────────────
 
