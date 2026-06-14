@@ -360,7 +360,7 @@ export default function ManaPick() {
       .sort(([a], [b]) => {
         const da = sets[a]?.released_at ?? "1900-01-01";
         const db = sets[b]?.released_at ?? "1900-01-01";
-        return db.localeCompare(da);
+        return da.localeCompare(db); // oldest first
       })
       .map(([setCode, cards]) => ({
         setCode,
