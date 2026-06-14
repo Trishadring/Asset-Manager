@@ -107,8 +107,28 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       }
     }
 
-    req.log.info({ orders: orders.length, uniqueCards: Object.keys(master).length }, "manapick orders fetched");
-    res.json({ orders, master });
+    // Fetch set info (name + release date) for the sets that appear in this batch of orders
+    const setCodes = [...new Set(Object.values(master).map((e) => e.set).filter(Boolean))];
+    const sets: Record<string, { name: string; released_at: string }> = {};
+    await Promise.all(
+      setCodes.map(async (code) => {
+        try {
+          const r = await fetch(`${SCRYFALL_BASE}/sets/${encodeURIComponent(code)}`);
+          if (r.ok) {
+            const s = (await r.json()) as Record<string, unknown>;
+            sets[code] = {
+              name: String(s["name"] ?? code),
+              released_at: String(s["released_at"] ?? "1900-01-01"),
+            };
+          }
+        } catch {
+          // leave this set out; client will fall back to the set code
+        }
+      }),
+    );
+
+    req.log.info({ orders: orders.length, uniqueCards: Object.keys(master).length, sets: Object.keys(sets).length }, "manapick orders fetched");
+    res.json({ orders, master, sets });
   } catch (err) {
     logger.error(err, "manapick/orders error");
     res.status(500).json({ error: String(err) });

@@ -124,9 +124,9 @@ function parseCollectorNumber(cn: string): [number, string] {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString("en-US", {
+    // Parse as local noon to avoid timezone-driven off-by-one-day issues
+    return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
       month: "short",
-      day: "numeric",
       year: "numeric",
     });
   } catch {
@@ -240,11 +240,8 @@ export default function ManaPick() {
     setEnrichProgress({ done: 0, total: 0 });
 
     try {
-      // 1. Fetch orders + sets in parallel
-      const [ordersRes, setsRes] = await Promise.all([
-        fetch("/api/manapick/orders"),
-        fetch("/api/manapick/sets"),
-      ]);
+      // 1. Fetch orders (set info is included in the response)
+      const ordersRes = await fetch("/api/manapick/orders");
 
       if (!ordersRes.ok) {
         const body = (await ordersRes.json().catch(() => ({}))) as {
@@ -253,12 +250,12 @@ export default function ManaPick() {
         throw new Error(body.error ?? `HTTP ${ordersRes.status}`);
       }
 
-      const { orders: rawOrders, master: rawMaster } =
+      const { orders: rawOrders, master: rawMaster, sets: rawSets } =
         (await ordersRes.json()) as {
           orders: Order[];
           master: Master;
+          sets: SetsMap;
         };
-      const { sets: rawSets } = (await setsRes.json()) as { sets: SetsMap };
 
       // Assign bin numbers
       const binMap: Record<string, number> = {};
