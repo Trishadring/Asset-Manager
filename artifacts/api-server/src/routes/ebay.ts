@@ -351,7 +351,7 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
 
     while (true) {
       const r = await fetch(
-        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SHIPPING_LABEL&limit=${limit}&offset=${offset}&transactionDateRange.from=${encodeURIComponent(FROM_DATE)}`,
+        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SHIPPING_LABEL&limit=${limit}&offset=${offset}`,
         { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
       );
 
@@ -363,7 +363,10 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
       const data = (await r.json()) as { transactions?: EbayShippingTransaction[]; total?: number };
       const page = data.transactions ?? [];
       labels.push(...page);
-      if (page.length < limit) break;
+      // Stop paginating early if the last item on this page is already older
+      // than our cutoff (results are newest-first)
+      const lastDate = page.at(-1)?.transactionDate;
+      if (page.length < limit || (lastDate && lastDate < FROM_DATE)) break;
       offset += limit;
     }
 
@@ -383,10 +386,13 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // Deduplicate by transaction ID — eBay can return the same ID in multiple
     // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
     const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
+    const fromDate = new Date(FROM_DATE);
     for (const tx of labels) {
       if (!tx.transactionId || !tx.amount?.value || !tx.orderId) continue;
-      // Skip refunds/credits — only import actual shipping charges
-      if (tx.bookingEntry === "CREDIT") continue;
+      // Client-side date cutoff (API param is silently ignored by eBay)
+      if (tx.transactionDate && new Date(tx.transactionDate) < fromDate) continue;
+      // Real shipping charges have bookingEntry="CREDIT"; fees/bulk are "DEBIT" — skip those
+      if (tx.bookingEntry !== "CREDIT") continue;
       const id = `ebay-ship-${tx.transactionId}`;
       rowMap.set(id, {
         id,
