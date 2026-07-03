@@ -338,13 +338,22 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // Only pull labels on or after Mar 29 2026
     const FROM_DATE = "2026-03-29T00:00:00.000Z";
 
-    // Remove any previously-synced labels older than the cutoff
+    // Remove previously-synced labels older than the cutoff, and any
+    // no-order-ID bulk charges (description = "eBay Shipping Label" exactly).
     await db
       .delete(purchasesTable)
       .where(
         and(
           like(purchasesTable.id, "ebay-ship-%"),
           lt(purchasesTable.date, new Date(FROM_DATE))
+        )
+      );
+    await db
+      .delete(purchasesTable)
+      .where(
+        and(
+          like(purchasesTable.id, "ebay-ship-%"),
+          eq(purchasesTable.description, "eBay Shipping Label")
         )
       );
 
@@ -379,7 +388,7 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
     const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
     for (const tx of labels) {
-      if (!tx.transactionId || !tx.amount?.value) continue;
+      if (!tx.transactionId || !tx.amount?.value || !tx.orderId) continue;
       const id = `ebay-ship-${tx.transactionId}`;
       rowMap.set(id, {
         id,
