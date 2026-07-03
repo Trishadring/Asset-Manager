@@ -96,6 +96,7 @@ function parsePullSheetCSV(text: string): Array<{
   orderQuantity: number;
   imageUrl: string;
   setReleaseDate: string;
+  tcgplayerSku: number | null;
 }> {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
@@ -111,6 +112,7 @@ function parsePullSheetCSV(text: string): Array<{
   const iOrderQty = idx("order quantity");
   const iImage = idx("main photo url");
   const iReleaseDate = idx("set release date");
+  const iSku = idx("skuid");
 
   if (iName === -1 || iSet === -1) return [];
 
@@ -129,6 +131,8 @@ function parsePullSheetCSV(text: string): Array<{
     const orderQuantity = parseInt(cols[iOrderQty] ?? "1", 10) || 1;
     const imageUrl = cols[iImage]?.trim() ?? "";
     const setReleaseDate = cols[iReleaseDate]?.trim() ?? "";
+    const skuRaw = iSku !== -1 ? parseInt(cols[iSku] ?? "", 10) : NaN;
+    const tcgplayerSku = isNaN(skuRaw) ? null : skuRaw;
 
     results.push({
       name,
@@ -139,6 +143,7 @@ function parsePullSheetCSV(text: string): Array<{
       orderQuantity,
       imageUrl,
       setReleaseDate,
+      tcgplayerSku,
     });
   }
   return results;
@@ -229,6 +234,163 @@ router.post("/tcgplayer/parse-pullsheet", async (req, res): Promise<void> => {
     res.json({ cards });
   } catch (err) {
     logger.error(err, "tcgplayer/parse-pullsheet error");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/tcgplayer/deduct-manapool
+// Preview or apply Manapool inventory deductions based on a TCGPlayer pull sheet.
+// Body: { cards: TcgPullCard[], apply: boolean }
+// - apply=false (default): returns a preview of what would change, no writes
+// - apply=true: fetches inventory, reduces quantities, writes back to Manapool
+router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
+  let email: string, token: string;
+  try {
+    const e = process.env["MANAPOOL_EMAIL"] ?? "";
+    const t = process.env["MANAPOOL_API_KEY"] ?? "";
+    if (!e || !t) throw new Error("MANAPOOL_EMAIL or MANAPOOL_API_KEY not configured.");
+    email = e; token = t;
+  } catch (err) {
+    res.status(500).json({ error: String(err) }); return;
+  }
+
+  const { cards, apply = false } = req.body as {
+    cards?: Array<{ name: string; tcgplayerSku: number | null; orderQuantity: number }>;
+    apply?: boolean;
+  };
+
+  if (!Array.isArray(cards) || cards.length === 0) {
+    res.status(400).json({ error: "cards array is required" }); return;
+  }
+
+  // Only cards with a known TCGPlayer SKU can be matched
+  const skuCards = cards.filter((c) => c.tcgplayerSku !== null);
+  if (skuCards.length === 0) {
+    res.status(400).json({ error: "No cards with TCGPlayer SKU found. Make sure you're using the Pull Sheet export (not the Order export)." });
+    return;
+  }
+
+  const skuSet = new Set(skuCards.map((c) => c.tcgplayerSku!));
+  const mpHeaders = {
+    Accept: "application/json",
+    "X-ManaPool-Email": email,
+    "X-ManaPool-Access-Token": token,
+    "Content-Type": "application/json",
+  };
+
+  // Fetch all Manapool inventory, paginating until we have everything
+  type MpInventoryItem = {
+    id: string;
+    product: { tcgplayer_sku: number };
+    price_cents: number;
+    quantity: number;
+  };
+
+  const allInventory: MpInventoryItem[] = [];
+  try {
+    let cursor: string | null = null;
+    const limit = 200;
+    while (true) {
+      const url = `https://manapool.com/api/v1/seller/inventory?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const r = await fetch(url, { headers: mpHeaders });
+      if (!r.ok) {
+        const text = await r.text();
+        res.status(502).json({ error: `Manapool inventory fetch failed (${r.status}): ${text.slice(0, 200)}` });
+        return;
+      }
+      const body = (await r.json()) as {
+        inventory?: MpInventoryItem[];
+        pagination?: { next_cursor?: string; returned?: number };
+      };
+      const page = body.inventory ?? [];
+      allInventory.push(...page);
+      cursor = body.pagination?.next_cursor ?? null;
+      if (!cursor || page.length < limit) break;
+    }
+  } catch (err) {
+    res.status(502).json({ error: `Failed to fetch Manapool inventory: ${String(err)}` }); return;
+  }
+
+  // Build a map from tcgplayer_sku -> inventory item (only items we care about)
+  const inventoryBySku = new Map<number, MpInventoryItem>();
+  for (const item of allInventory) {
+    if (skuSet.has(item.product.tcgplayer_sku)) {
+      inventoryBySku.set(item.product.tcgplayer_sku, item);
+    }
+  }
+
+  // Build the deduction plan
+  type DeductionRow = {
+    name: string;
+    tcgplayerSku: number;
+    orderQuantity: number;
+    currentQuantity: number;
+    newQuantity: number;
+    priceCents: number;
+    inventoryId: string;
+    status: "ok" | "insufficient" | "not_found";
+  };
+
+  const plan: DeductionRow[] = [];
+  const notFound: Array<{ name: string; tcgplayerSku: number }> = [];
+
+  for (const card of skuCards) {
+    const sku = card.tcgplayerSku!;
+    const inv = inventoryBySku.get(sku);
+    if (!inv) {
+      notFound.push({ name: card.name, tcgplayerSku: sku });
+      continue;
+    }
+    const newQty = Math.max(0, inv.quantity - card.orderQuantity);
+    plan.push({
+      name: card.name,
+      tcgplayerSku: sku,
+      orderQuantity: card.orderQuantity,
+      currentQuantity: inv.quantity,
+      newQuantity: newQty,
+      priceCents: inv.price_cents,
+      inventoryId: inv.id,
+      status: inv.quantity < card.orderQuantity ? "insufficient" : "ok",
+    });
+  }
+
+  if (!apply) {
+    // Preview only — no writes
+    req.log.info({ plan: plan.length, notFound: notFound.length }, "tcgplayer deduct preview");
+    res.json({ preview: true, plan, notFound });
+    return;
+  }
+
+  // Apply: write only rows that have a change (newQuantity !== currentQuantity)
+  const toUpdate = plan.filter((row) => row.newQuantity !== row.currentQuantity);
+  if (toUpdate.length === 0) {
+    res.json({ applied: true, updated: 0, plan, notFound });
+    return;
+  }
+
+  try {
+    const updateBody = toUpdate.map((row) => ({
+      tcgplayer_sku: row.tcgplayerSku,
+      price_cents: row.priceCents,
+      quantity: row.newQuantity,
+    }));
+
+    const r = await fetch("https://manapool.com/api/v1/seller/inventory", {
+      method: "POST",
+      headers: mpHeaders,
+      body: JSON.stringify(updateBody),
+    });
+
+    if (!r.ok) {
+      const text = await r.text();
+      res.status(502).json({ error: `Manapool inventory update failed (${r.status}): ${text.slice(0, 200)}` });
+      return;
+    }
+
+    req.log.info({ updated: toUpdate.length, notFound: notFound.length }, "tcgplayer manapool deduction applied");
+    res.json({ applied: true, updated: toUpdate.length, plan, notFound });
+  } catch (err) {
+    logger.error(err, "tcgplayer/deduct-manapool apply error");
     res.status(500).json({ error: String(err) });
   }
 });

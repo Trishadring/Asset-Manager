@@ -75,4 +75,41 @@ export interface TcgPullCard {
   orderQuantity: number;
   imageUrl: string;
   setReleaseDate: string;
+  tcgplayerSku: number | null;
+}
+
+export interface DeductionRow {
+  name: string;
+  tcgplayerSku: number;
+  orderQuantity: number;
+  currentQuantity: number;
+  newQuantity: number;
+  priceCents: number;
+  inventoryId: string;
+  status: "ok" | "insufficient";
+}
+
+export interface DeductionResult {
+  preview: boolean;
+  applied?: boolean;
+  updated?: number;
+  plan: DeductionRow[];
+  notFound: Array<{ name: string; tcgplayerSku: number }>;
+}
+
+export function useDeductFromManapool() {
+  return useMutation<DeductionResult, Error, { cards: TcgPullCard[]; apply: boolean }>({
+    mutationFn: async ({ cards, apply }) => {
+      const res = await fetch(`${getBaseUrl()}/api/tcgplayer/deduct-manapool`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards, apply }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? "Deduct failed");
+      }
+      return res.json();
+    },
+  });
 }
