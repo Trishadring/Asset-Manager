@@ -372,21 +372,27 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
       return;
     }
 
+    // Log first 5 transactions so we can see real field values from eBay
+    req.log.info({ sample: labels.slice(0, 5).map((t) => ({
+      id: t.transactionId,
+      bookingEntry: t.bookingEntry,
+      amount: t.amount?.value,
+      orderId: t.orderId,
+    })) }, "ebay sync-shipping sample");
+
     // Deduplicate by transaction ID — eBay can return the same ID in multiple
     // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
     const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
     for (const tx of labels) {
       if (!tx.transactionId || !tx.amount?.value || !tx.orderId) continue;
-      const rawAmount = parseFloat(tx.amount.value);
-      // Actual shipping charges are negative amounts (debit from account).
-      // Positive amounts are refunds/credits — skip them.
-      if (rawAmount >= 0) continue;
+      // Skip refunds/credits — only import actual shipping charges
+      if (tx.bookingEntry === "CREDIT") continue;
       const id = `ebay-ship-${tx.transactionId}`;
       rowMap.set(id, {
         id,
         date: tx.transactionDate ? new Date(tx.transactionDate) : new Date(),
         description: `eBay Shipping Label (order …${tx.orderId.slice(-8)})`,
-        amount: Math.abs(rawAmount),
+        amount: Math.abs(parseFloat(tx.amount.value)),
       });
     }
     const rows = Array.from(rowMap.values());
