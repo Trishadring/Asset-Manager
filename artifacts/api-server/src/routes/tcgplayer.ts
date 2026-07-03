@@ -105,12 +105,56 @@ function toScryfallName(displayName: string): string {
     .trim();
 }
 
-function parsePullSheetCSV(text: string): Array<{
+// ─── Scryfall sets cache ────────────────────────────────────────────────────
+// Maps lowercase set name → Scryfall set code. Refreshed once per hour.
+let sfSetsCache: { codes: Map<string, string>; fetchedAt: number } | null = null;
+const SF_SETS_TTL_MS = 3_600_000;
+
+async function getScryfallSetCodes(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (sfSetsCache && now - sfSetsCache.fetchedAt < SF_SETS_TTL_MS) {
+    return sfSetsCache.codes;
+  }
+  try {
+    const r = await fetch("https://api.scryfall.com/sets", {
+      headers: { "User-Agent": "TCGAccounting/1.0" },
+    });
+    if (!r.ok) return sfSetsCache?.codes ?? new Map();
+    const body = (await r.json()) as { data: Array<{ code: string; name: string }> };
+    const codes = new Map<string, string>();
+    for (const s of body.data) {
+      codes.set(s.name.toLowerCase(), s.code);
+    }
+    sfSetsCache = { codes, fetchedAt: now };
+    return codes;
+  } catch {
+    return sfSetsCache?.codes ?? new Map();
+  }
+}
+
+/** Resolve a TCGPlayer set name to a Scryfall set code.
+ *  Tries exact match first, then a normalised partial match. */
+function resolveSetCode(setName: string, codes: Map<string, string>): string {
+  const lower = setName.toLowerCase();
+  const exact = codes.get(lower);
+  if (exact) return exact;
+  // Partial: find any Scryfall set whose name contains the TCGPlayer name or vice-versa
+  for (const [sfName, sfCode] of codes) {
+    if (sfName.includes(lower) || lower.includes(sfName)) return sfCode;
+  }
+  return "";
+}
+
+function parsePullSheetCSV(
+  text: string,
+  setCodeMap: Map<string, string>,
+): Array<{
   name: string;
   scryfallName: string;
   setCode: string;
   setName: string;
   collectorNumber: string;
+  finish: "foil" | "nonfoil";
   quantity: number;
   orderQuantity: number;
   imageUrl: string;
@@ -127,6 +171,7 @@ function parsePullSheetCSV(text: string): Array<{
   const iName = idx("product name");
   const iSet = idx("set");
   const iNumber = idx("number");
+  const iCondition = idx("condition");
   const iQty = idx("quantity");
   const iOrderQty = idx("order quantity");
   const iImage = idx("main photo url");
@@ -171,6 +216,9 @@ function parsePullSheetCSV(text: string): Array<{
 
     const setName = cols[iSet]?.trim() ?? "";
     const collectorNumber = cols[iNumber]?.trim() ?? "";
+    const condition = iCondition !== -1 ? (cols[iCondition]?.trim() ?? "") : "";
+    const finish: "foil" | "nonfoil" = /foil/i.test(condition) ? "foil" : "nonfoil";
+    const setCode = resolveSetCode(setName, setCodeMap);
     const quantity = parseInt(cols[iQty] ?? "1", 10) || 1;
     const orderQuantity = parseOrderQty(cols[iOrderQty]);
     const imageUrl = cols[iImage]?.trim() ?? "";
@@ -181,9 +229,10 @@ function parsePullSheetCSV(text: string): Array<{
     results.push({
       name,
       scryfallName: toScryfallName(name),
-      setCode: "", // resolved via Scryfall
+      setCode,
       setName,
       collectorNumber,
+      finish,
       quantity,
       orderQuantity,
       imageUrl,
@@ -280,7 +329,8 @@ router.post("/tcgplayer/parse-pullsheet", async (req, res): Promise<void> => {
       return;
     }
 
-    const cards = parsePullSheetCSV(csv);
+    const setCodeMap = await getScryfallSetCodes();
+    const cards = parsePullSheetCSV(csv, setCodeMap);
     if (cards.length === 0) {
       res.status(400).json({
         error:

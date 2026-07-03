@@ -72,6 +72,7 @@ export interface TcgPullCard {
   setCode: string;
   setName: string;
   collectorNumber: string;
+  finish: "foil" | "nonfoil";
   quantity: number;
   orderQuantity: number;
   imageUrl: string;

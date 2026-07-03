@@ -407,15 +407,15 @@ export default function ManaPick() {
       setMaster((prev) => {
         const next = { ...prev };
         for (const card of cards) {
-          // Use set name to build a lookup key (no set code from TCGPlayer CSV)
-          // Key uses name + setName + collectorNumber since we don't have scryfall set code yet
-          const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|nonfoil`;
+          // Key: prefer resolved Scryfall set code; fall back to TCGPlayer set name slug
+          const setSlug = card.setCode || card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+          const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|${card.finish}`;
           if (!next[key]) {
             next[key] = {
               name: card.name,
-              set: card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6),
+              set: setSlug,
               collector_number: card.collectorNumber,
-              finish: "nonfoil",
+              finish: card.finish,
               quantity: 0,
               allocations: {},
               source: "tcgplayer",
@@ -437,23 +437,24 @@ export default function ManaPick() {
         return next;
       });
 
-      // Enrich TCGPlayer cards via Scryfall using cleaned card name
-      // scryfallName strips TCGPlayer suffixes like "(2069) (Rainbow Foil)" → "Otherworldly Gaze"
+      // Enrich TCGPlayer cards via Scryfall.
+      // When a set code was resolved, use set+collector_number for exact printing lookup.
+      // Otherwise fall back to cleaned card name.
       const tcgIdentifiers = cards.map((c) => ({
-        key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|nonfoil`,
+        key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|${c.finish}`,
         name: c.scryfallName,
-        set: undefined,
-        collector_number: c.collectorNumber,
+        set: c.setCode || undefined,
+        collector_number: c.collectorNumber || undefined,
         scryfall_id: undefined,
       }));
 
-      // Also add set info for sorting
+      // Add set info for sorting — use resolved code when available
       setSets((prev) => {
         const next = { ...prev };
         for (const c of cards) {
-          const pseudoCode = c.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
-          if (!next[pseudoCode]) {
-            next[pseudoCode] = {
+          const code = c.setCode || c.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+          if (!next[code]) {
+            next[code] = {
               name: c.setName,
               released_at: c.setReleaseDate || "1900-01-01",
             };
