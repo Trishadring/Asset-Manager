@@ -378,17 +378,22 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
       return;
     }
 
-    await db
-      .insert(purchasesTable)
-      .values(rows)
-      .onConflictDoUpdate({
-        target: purchasesTable.id,
-        set: {
-          date: sql`excluded.date`,
-          description: sql`excluded.description`,
-          amount: sql`excluded.amount`,
-        },
-      });
+    // PostgreSQL caps bind parameters at 65535. Each row has 4 columns, so
+    // cap batch size at 500 rows (500 × 4 = 2000 params) to stay well under.
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      await db
+        .insert(purchasesTable)
+        .values(rows.slice(i, i + BATCH))
+        .onConflictDoUpdate({
+          target: purchasesTable.id,
+          set: {
+            date: sql`excluded.date`,
+            description: sql`excluded.description`,
+            amount: sql`excluded.amount`,
+          },
+        });
+    }
 
     res.json({
       message: `Synced ${rows.length} eBay shipping label${rows.length !== 1 ? "s" : ""}.`,
