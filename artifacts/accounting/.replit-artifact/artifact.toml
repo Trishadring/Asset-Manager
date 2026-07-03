@@ -24,7 +24,7 @@ serve = "static"
 
 [[services.production.rewrites]]
 from = "/**"
-to = "/accounting/index.html"
+to = "/index.html"
 
 [services.env]
 PORT = "24339"
