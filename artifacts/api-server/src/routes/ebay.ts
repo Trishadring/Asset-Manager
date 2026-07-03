@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, ebayOrdersTable, settingsTable, purchasesTable } from "@workspace/db";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and, lt, like } from "drizzle-orm";
 
 const SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly",
@@ -335,13 +335,26 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
   try {
     const token = await getAccessToken();
 
+    // Only pull labels on or after Mar 29 2026
+    const FROM_DATE = "2026-03-29T00:00:00.000Z";
+
+    // Remove any previously-synced labels older than the cutoff
+    await db
+      .delete(purchasesTable)
+      .where(
+        and(
+          like(purchasesTable.id, "ebay-ship-%"),
+          lt(purchasesTable.date, new Date(FROM_DATE))
+        )
+      );
+
     const labels: EbayShippingTransaction[] = [];
     let offset = 0;
     const limit = 200;
 
     while (true) {
       const r = await fetch(
-        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SHIPPING_LABEL&limit=${limit}&offset=${offset}`,
+        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SHIPPING_LABEL&limit=${limit}&offset=${offset}&transactionDateRange.from=${encodeURIComponent(FROM_DATE)}`,
         { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
       );
 
