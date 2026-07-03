@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, ebayOrdersTable, settingsTable } from "@workspace/db";
+import { db, ebayOrdersTable, settingsTable, purchasesTable } from "@workspace/db";
 import { sql, eq } from "drizzle-orm";
 
 const SCOPES = [
@@ -320,6 +320,86 @@ router.get("/ebay/orders", async (_req, res): Promise<void> => {
     .from(ebayOrdersTable)
     .orderBy(sql`date DESC`);
   res.json(orders);
+});
+
+interface EbayShippingTransaction {
+  transactionId?: string;
+  transactionDate?: string;
+  transactionType?: string;
+  amount?: { value?: string; currency?: string };
+  orderId?: string;
+}
+
+/** Fetches SHIPPING_LABEL transactions and upserts them into purchases. */
+router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
+  try {
+    const token = await getAccessToken();
+
+    const labels: EbayShippingTransaction[] = [];
+    let offset = 0;
+    const limit = 200;
+
+    while (true) {
+      const r = await fetch(
+        `https://apiz.ebay.com/sell/finances/v1/transaction?transactionType=SHIPPING_LABEL&limit=${limit}&offset=${offset}`,
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`eBay Finances API ${r.status}: ${text}`);
+      }
+
+      const data = (await r.json()) as { transactions?: EbayShippingTransaction[]; total?: number };
+      const page = data.transactions ?? [];
+      labels.push(...page);
+      if (page.length < limit) break;
+      offset += limit;
+    }
+
+    if (labels.length === 0) {
+      res.json({ message: "No shipping label transactions found", synced: 0, total: 0 });
+      return;
+    }
+
+    const rows = labels
+      .filter((tx) => tx.transactionId && tx.amount?.value)
+      .map((tx) => ({
+        id: `ebay-ship-${tx.transactionId}`,
+        date: tx.transactionDate ? new Date(tx.transactionDate) : new Date(),
+        description: tx.orderId
+          ? `eBay Shipping Label (order …${tx.orderId.slice(-8)})`
+          : "eBay Shipping Label",
+        amount: Math.abs(parseFloat(tx.amount!.value!)),
+      }));
+
+    if (rows.length === 0) {
+      res.json({ message: "No valid shipping transactions to sync", synced: 0, total: labels.length });
+      return;
+    }
+
+    await db
+      .insert(purchasesTable)
+      .values(rows)
+      .onConflictDoUpdate({
+        target: purchasesTable.id,
+        set: {
+          date: sql`excluded.date`,
+          description: sql`excluded.description`,
+          amount: sql`excluded.amount`,
+        },
+      });
+
+    res.json({
+      message: `Synced ${rows.length} eBay shipping label${rows.length !== 1 ? "s" : ""}.`,
+      synced: rows.length,
+      total: labels.length,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "ebay sync-shipping failed");
+    res.status(502).json({ error: message });
+  }
 });
 
 // ── App-level token cache (client_credentials for Browse API) ─────────────────

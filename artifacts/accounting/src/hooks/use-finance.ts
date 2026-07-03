@@ -102,6 +102,24 @@ export function useWeeklyStats() {
   });
 }
 
+export function useSyncEbayShipping() {
+  const queryClient = useQueryClient();
+  return useMutation<{ message: string; synced: number; total: number }, Error>({
+    mutationFn: async () => {
+      const res = await fetch(`${getBaseUrl()}/api/ebay/sync-shipping`, { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useDeletePurchase() {
   const queryClient = useQueryClient();
   

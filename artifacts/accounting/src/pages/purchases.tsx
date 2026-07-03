@@ -3,9 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format } from "date-fns";
-import { Trash2, Loader2, Plus } from "lucide-react";
+import { Trash2, Loader2, Plus, RefreshCw } from "lucide-react";
 
-import { usePurchases, useCreatePurchase, useDeletePurchase } from "@/hooks/use-finance";
+import { usePurchases, useCreatePurchase, useDeletePurchase, useSyncEbayShipping } from "@/hooks/use-finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,7 +40,28 @@ export default function Purchases() {
   const { data: purchases, isLoading } = usePurchases();
   const createPurchase = useCreatePurchase();
   const deletePurchase = useDeletePurchase();
+  const syncEbayShipping = useSyncEbayShipping();
   const { toast } = useToast();
+
+  const handleSyncEbayShipping = () => {
+    syncEbayShipping.mutate(undefined, {
+      onSuccess: (data) => {
+        toast({
+          title: "eBay shipping synced",
+          description: data.synced > 0
+            ? `${data.synced} shipping label${data.synced !== 1 ? "s" : ""} added to purchases.`
+            : "No new shipping labels found.",
+        });
+      },
+      onError: (err) => {
+        toast({
+          variant: "destructive",
+          title: "eBay sync failed",
+          description: err.message,
+        });
+      },
+    });
+  };
 
   const form = useForm<PurchaseFormValues>({
     resolver: zodResolver(purchaseSchema),
@@ -150,10 +171,26 @@ export default function Purchases() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 flex-wrap">
             <CardTitle className="text-lg">History</CardTitle>
-            <div className="text-sm font-medium">
-              Total: <span className="font-mono text-primary font-bold">{formatCurrency(runningTotal)}</span>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncEbayShipping}
+                disabled={syncEbayShipping.isPending}
+                className="text-purple-600 border-purple-300 hover:bg-purple-50 dark:text-purple-400 dark:border-purple-700 dark:hover:bg-purple-950/30"
+              >
+                {syncEbayShipping.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Sync eBay Shipping
+              </Button>
+              <div className="text-sm font-medium">
+                Total: <span className="font-mono text-primary font-bold">{formatCurrency(runningTotal)}</span>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
