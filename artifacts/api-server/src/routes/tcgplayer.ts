@@ -116,11 +116,36 @@ function parsePullSheetCSV(text: string): Array<{
 
   if (iName === -1 || iSet === -1) return [];
 
+  /**
+   * Parse the "Order Quantity" column which TCGPlayer formats as one or more
+   * "OrderId:qty" pairs joined by "|", e.g. "5265F626-FA3A0B-7501C:1" or
+   * "5265F626-FA3A0B-7501C:2|5265F626-4AD69A-AFC5E:1".
+   * Returns the sum of all quantities, or 1 as a fallback.
+   */
+  function parseOrderQty(raw: string | undefined): number {
+    if (!raw) return 1;
+    // Try plain integer first (in case format ever changes)
+    const plain = parseInt(raw, 10);
+    if (!isNaN(plain) && !raw.includes(":")) return plain || 1;
+    // Sum orderId:qty pairs
+    const total = raw
+      .split("|")
+      .reduce((sum, pair) => {
+        const qty = parseInt(pair.split(":").pop() ?? "", 10);
+        return sum + (isNaN(qty) ? 0 : qty);
+      }, 0);
+    return total > 0 ? total : 1;
+  }
+
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     const raw = lines[i]!;
     if (!raw.trim()) continue;
     const cols = splitCSVLine(raw);
+
+    // Skip the footer row TCGPlayer appends: "Orders Contained in Pull Sheet:,..."
+    const firstCol = cols[0]?.trim().toLowerCase() ?? "";
+    if (firstCol.startsWith("orders contained")) continue;
 
     const name = cols[iName]?.trim() ?? "";
     if (!name) continue;
@@ -128,7 +153,7 @@ function parsePullSheetCSV(text: string): Array<{
     const setName = cols[iSet]?.trim() ?? "";
     const collectorNumber = cols[iNumber]?.trim() ?? "";
     const quantity = parseInt(cols[iQty] ?? "1", 10) || 1;
-    const orderQuantity = parseInt(cols[iOrderQty] ?? "1", 10) || 1;
+    const orderQuantity = parseOrderQty(cols[iOrderQty]);
     const imageUrl = cols[iImage]?.trim() ?? "";
     const setReleaseDate = cols[iReleaseDate]?.trim() ?? "";
     const skuRaw = iSku !== -1 ? parseInt(cols[iSku] ?? "", 10) : NaN;
