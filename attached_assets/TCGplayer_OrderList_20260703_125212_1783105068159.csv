@@ -1,0 +1,3 @@
+Order #,Buyer Name,Order Date,Status,Shipping Type,Product Amt,Shipping Amt,Total Amt,Buyer Paid,Carrier Information
+"5265F626-FA3A0B-7501C","Jacob Hillis","Thursday, 02 July 2026","Ready to Ship","Standard","29.7","1.79","31.49","True"
+"5265F626-4AD69A-AFC5E","Codi Carroll","Thursday, 02 July 2026","Ready to Ship","Standard","9.88","1.79","11.67","True"

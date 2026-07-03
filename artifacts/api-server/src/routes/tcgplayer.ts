@@ -225,9 +225,22 @@ router.post("/tcgplayer/parse-pullsheet", async (req, res): Promise<void> => {
   }
 
   try {
+    // Detect if user accidentally uploaded an Order List instead of a Pull Sheet
+    const firstLine = csv.split(/\r?\n/)[0]?.toLowerCase() ?? "";
+    if (firstLine.includes("order #") || firstLine.includes("buyer name")) {
+      res.status(400).json({
+        error:
+          'This looks like a TCGPlayer Order List, not a Pull Sheet. In TCGPlayer, go to Orders → click "Pull Sheet" (or export a Pull Sheet from the Orders page) to get a CSV with individual card rows.',
+      });
+      return;
+    }
+
     const cards = parsePullSheetCSV(csv);
     if (cards.length === 0) {
-      res.status(400).json({ error: "No valid cards found in CSV. Make sure you're using the Pull Sheet format." });
+      res.status(400).json({
+        error:
+          'No card rows found. Upload the TCGPlayer Pull Sheet CSV (columns: Product Name, Set, SkuId, Order Quantity). The Order List or Packing Slip formats won\'t work here.',
+      });
       return;
     }
     req.log.info({ cards: cards.length }, "tcgplayer pull sheet parsed");

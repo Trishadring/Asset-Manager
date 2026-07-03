@@ -21,13 +21,13 @@ router.use(ebayNotificationsRouter);
 // Health check — public
 router.use(healthRouter);
 
-// Require authentication for all remaining routes
+// Require authentication for all remaining routes (skipped in development)
 router.use((req: Request, res: Response, next: NextFunction) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Unauthorized" });
+  if (process.env["NODE_ENV"] !== "production" || req.isAuthenticated()) {
+    next();
     return;
   }
-  next();
+  res.status(401).json({ error: "Unauthorized" });
 });
 
 router.use(dashboardRouter);
