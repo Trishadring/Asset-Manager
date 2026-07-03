@@ -19,6 +19,7 @@ import {
   Upload,
   X,
   MinusCircle,
+  Tag,
 } from "lucide-react";
 import { useDeductFromManapool, type DeductionResult, type TcgPullCard } from "@/hooks/use-tcgplayer";
 
@@ -84,6 +85,17 @@ interface Order {
 
 type Master = Record<string, MasterEntry>;
 type SetsMap = Record<string, { name: string; released_at: string }>;
+
+interface EbayPickLineItem {
+  title: string;
+  imageUrl: string | null;
+  quantity: number;
+}
+
+interface EbayPickOrder {
+  id: string;
+  lineItems: EbayPickLineItem[];
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -239,6 +251,12 @@ export default function ManaPick() {
   const [deductPreview, setDeductPreview] = useState<DeductionResult | null>(null);
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const deductMutation = useDeductFromManapool();
+
+  // eBay orders state
+  const [ebayOrders, setEbayOrders] = useState<EbayPickOrder[]>([]);
+  const [ebayLoading, setEbayLoading] = useState(false);
+  const [ebayError, setEbayError] = useState<string | null>(null);
+  const [ebayPacked, setEbayPacked] = useState<Record<string, boolean>>({});
 
   const sessionIdRef = useRef("");
   const tcgFileInputRef = useRef<HTMLInputElement>(null);
@@ -642,6 +660,27 @@ export default function ManaPick() {
     }
   }
 
+  // ── Fetch eBay pick orders ─────────────────────────────────────────────────
+
+  const fetchEbayOrders = useCallback(async () => {
+    setEbayLoading(true);
+    setEbayError(null);
+    try {
+      const res = await fetch("/api/ebay/pick-orders");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const { orders } = (await res.json()) as { orders: EbayPickOrder[] };
+      setEbayOrders(orders);
+      setEbayPacked({});
+    } catch (err) {
+      setEbayError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEbayLoading(false);
+    }
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -719,6 +758,23 @@ export default function ManaPick() {
             </Button>
           )}
 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchEbayOrders}
+            disabled={ebayLoading}
+            className="text-purple-600 border-purple-300 hover:bg-purple-50 dark:text-purple-400 dark:border-purple-700 dark:hover:bg-purple-950/30"
+          >
+            {ebayLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Tag className="h-4 w-4" />
+            )}
+            <span className="ml-1">
+              {ebayLoading ? "Loading…" : ebayOrders.length > 0 ? "Refresh eBay" : "Fetch eBay"}
+            </span>
+          </Button>
+
           {!isEmpty && (
             <Button
               variant="outline"
@@ -748,6 +804,12 @@ export default function ManaPick() {
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
           <span>TCGPlayer: {tcgError}</span>
           <button onClick={() => setTcgError(null)} className="ml-4 underline text-xs opacity-70 hover:opacity-100">dismiss</button>
+        </div>
+      )}
+      {ebayError && (
+        <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
+          <span>eBay: {ebayError}</span>
+          <button onClick={() => setEbayError(null)} className="ml-4 underline text-xs opacity-70 hover:opacity-100">dismiss</button>
         </div>
       )}
 
@@ -828,12 +890,11 @@ export default function ManaPick() {
                     <h2 className="text-lg font-bold">
                       {setInfo?.name ?? setCode.toUpperCase()}
                     </h2>
-                    <p className="text-xs text-muted-foreground">
-                      {setInfo?.name ? setCode.toUpperCase() : ""}
-                      {setInfo?.released_at
-                        ? `${setInfo.name ? " · " : ""}Released ${formatDate(setInfo.released_at)}`
-                        : ""}
-                    </p>
+                    {setInfo?.name && (
+                      <p className="text-xs text-muted-foreground">
+                        {setCode.toUpperCase()}
+                      </p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                     {cards.map(([key, entry]) => (
@@ -991,6 +1052,72 @@ export default function ManaPick() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── eBay Orders ──────────────────────────────────────────────────── */}
+      {ebayOrders.length > 0 && (
+        <div className="space-y-4">
+          <Separator />
+          <div className="flex items-center gap-2">
+            <Tag className="h-4 w-4 text-purple-500" />
+            <h2 className="text-lg font-bold">eBay Orders</h2>
+            <span className="text-sm text-muted-foreground">
+              ({ebayOrders.filter((o) => !ebayPacked[o.id]).length} pending)
+            </span>
+          </div>
+
+          {ebayOrders.filter((o) => !ebayPacked[o.id]).map((order) => (
+            <div key={order.id} className="rounded-lg border bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs font-mono text-muted-foreground">
+                  {order.id.length > 14 ? `${order.id.slice(0, 14)}…` : order.id}
+                  <span className="ml-2 text-muted-foreground/60">
+                    · {order.lineItems.length} item{order.lineItems.length !== 1 ? "s" : ""}
+                  </span>
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0"
+                  onClick={() => setEbayPacked((prev) => ({ ...prev, [order.id]: true }))}
+                >
+                  Mark Packed
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {order.lineItems.map((item, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.title}
+                        className="w-16 h-16 object-cover rounded-md border shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-md border bg-muted flex items-center justify-center shrink-0">
+                        <Tag className="h-5 w-5 text-muted-foreground opacity-50" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium leading-tight line-clamp-3">{item.title}</p>
+                      {item.quantity > 1 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">×{item.quantity}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {ebayOrders.every((o) => ebayPacked[o.id]) && (
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
+              <CheckCircle2 className="h-8 w-8 text-green-500 opacity-80" />
+              <p className="text-sm font-medium">All eBay orders packed!</p>
+            </div>
+          )}
+        </div>
       )}
 
     {/* ── Deduct from Manapool preview dialog ─────────────────────────── */}

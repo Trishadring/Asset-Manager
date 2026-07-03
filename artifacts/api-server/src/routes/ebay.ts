@@ -322,4 +322,99 @@ router.get("/ebay/orders", async (_req, res): Promise<void> => {
   res.json(orders);
 });
 
+// ── App-level token cache (client_credentials for Browse API) ─────────────────
+
+let cachedAppToken: { value: string; expiresAt: number } | null = null;
+
+async function getAppToken(): Promise<string | null> {
+  if (cachedAppToken && Date.now() < cachedAppToken.expiresAt - 60_000) {
+    return cachedAppToken.value;
+  }
+  const clientId = process.env["EBAY_CLIENT_ID"];
+  const clientSecret = process.env["EBAY_CLIENT_SECRET"];
+  if (!clientId || !clientSecret) return null;
+  try {
+    const creds = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+      method: "POST",
+      headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        scope: "https://api.ebay.com/oauth/api_scope",
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { access_token: string; expires_in: number };
+    cachedAppToken = { value: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+interface EbayLineItemRaw {
+  legacyItemId?: string;
+  title?: string;
+  quantity?: number;
+  image?: { imageUrl?: string };
+}
+
+/** Returns unfulfilled eBay orders with listing title + image, for ManaPick. */
+router.get("/ebay/pick-orders", async (req, res): Promise<void> => {
+  try {
+    const token = await getAccessToken();
+    const allOrders = await fetchAllOrders(token);
+
+    // Only orders awaiting shipment
+    const pending = allOrders.filter(
+      (o) => o.orderFulfillmentStatus === "NOT_STARTED" || o.orderFulfillmentStatus === "IN_PROGRESS"
+    );
+
+    // Collect unique legacyItemIds
+    const itemIds = new Set<string>();
+    for (const order of pending) {
+      for (const item of (order.lineItems as EbayLineItemRaw[]) ?? []) {
+        if (item.legacyItemId) itemIds.add(item.legacyItemId);
+      }
+    }
+
+    // Try to fetch listing images via Browse API (app token = no user auth needed)
+    const imageMap = new Map<string, string>();
+    const appToken = await getAppToken();
+    if (appToken && itemIds.size > 0) {
+      await Promise.all(
+        [...itemIds].map(async (itemId) => {
+          try {
+            const r = await fetch(`https://api.ebay.com/buy/browse/v1/item/v1|${itemId}|0`, {
+              headers: { Authorization: `Bearer ${appToken}` },
+            });
+            if (r.ok) {
+              const data = (await r.json()) as { image?: { imageUrl?: string } };
+              if (data.image?.imageUrl) imageMap.set(itemId, data.image.imageUrl);
+            }
+          } catch { /* ignore */ }
+        })
+      );
+    }
+
+    const result = pending.map((order) => ({
+      id: order.orderId,
+      lineItems: ((order.lineItems as EbayLineItemRaw[]) ?? []).map((item) => ({
+        title: item.title ?? "Unknown item",
+        imageUrl:
+          (item.legacyItemId ? imageMap.get(item.legacyItemId) : undefined) ??
+          item.image?.imageUrl ??
+          null,
+        quantity: item.quantity ?? 1,
+      })),
+    }));
+
+    res.json({ orders: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    req.log.error({ err }, "ebay pick-orders failed");
+    res.status(502).json({ error: message });
+  }
+});
+
 export default router;
