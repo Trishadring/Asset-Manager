@@ -2,54 +2,58 @@
 
 ## Project Overview
 
-This repository contains a small MTG seller operations stack with two production-relevant surfaces: a TypeScript/Express accounting API and React dashboard under `artifacts/api-server` and `artifacts/accounting`, plus a Streamlit helper in `app.py` for fetching and processing Manapool orders. The backend talks directly to PostgreSQL via Drizzle and to third-party seller APIs (Manapool, eBay, Scryfall) using server-side secrets.
+This repository currently deploys a public path-routed accounting application with two production-reachable surfaces on the same origin: a TypeScript/Express API under `/api` and a React dashboard under `/accounting/`. The backend talks directly to PostgreSQL via Drizzle and to third-party seller APIs (Manapool, eBay, Scryfall) using server-side secrets and stored OAuth tokens.
 
 Assumptions for security review:
 - Only production-reachable issues are in scope.
+- The current public deployment exposes `/api` and `/accounting/`; the root path returns an artifact listing/404.
+- `app.py` is not part of the currently reachable public deployment unless future scans show otherwise.
 - `artifacts/mockup-sandbox/`, `scripts/`, `main.py`, and attached assets are dev-only unless production reachability is demonstrated.
 - Replit-managed TLS is assumed in production.
 - `NODE_ENV` is assumed to be `production` in production deployments.
 
 ## Assets
 
-- **Business financial records** — purchases, custom sales, dashboard rollups, and weekly profit data stored in PostgreSQL. Unauthorized reads or writes would expose or corrupt accounting records.
-- **Marketplace order data** — Manapool and eBay order summaries, payout amounts, shipping totals, and order identifiers. These data sets reveal revenue and business activity.
-- **Marketplace credentials and refresh tokens** — `MANAPOOL_API_KEY`, `MANAPOOL_EMAIL`, eBay client credentials, refresh tokens, and verification tokens. These secrets allow the application to act on behalf of the seller account.
-- **Operational integrity** — sync endpoints trigger upstream API calls and database writes. Abuse can create denial-of-service conditions, rate-limit exhaustion, or poisoned local records.
+- **Business financial records** — purchases, custom sales, dashboard rollups, weekly profit data, and imported marketplace orders stored in PostgreSQL. Unauthorized reads or writes expose or corrupt the accounting ledger.
+- **Marketplace operational data** — current unshipped Manapool orders, shipment actions, pick-state data, and imported eBay / TCGPlayer order history. These reveal business activity and can affect order fulfillment.
+- **Marketplace credentials and tokens** — `MANAPOOL_API_KEY`, `MANAPOOL_EMAIL`, eBay client credentials, and the stored eBay refresh token. These let the server act directly on the seller's external accounts.
+- **Authenticated browser sessions** — the `sid` session cookie and server-side session store grant access to all protected `/api` endpoints. Browser-side compromise can be used to exfiltrate data or invoke privileged actions.
+- **Operational integrity** — sync and shipping endpoints can trigger upstream API traffic and overwrite shared local records. Abuse can poison accounting data, exhaust quotas, or disrupt fulfillment workflows.
 
 ## Trust Boundaries
 
-- **Browser / Streamlit client → Express API / Streamlit server** — all request parameters, cookies, headers, and form inputs are untrusted and must be authenticated/authorized before accessing business data or sync actions.
-- **Express API / Streamlit server → PostgreSQL** — database access is trusted only after server-side validation and authorization. Injection and broken access control here expose all accounting data.
-- **Application → External marketplaces** — the server calls Manapool and eBay with privileged secrets and refresh tokens. Any public endpoint that triggers these calls inherits that privilege.
-- **OAuth provider / webhook sender → Application** — callback and webhook routes must prove request origin and bind responses to the intended authenticated actor or deployment state.
-- **Production / Dev-only boundary** — mockup sandbox, local scripts, and preview tooling should normally be ignored unless the scan finds a path that exposes them in production.
+- **Browser → Express API** — all request parameters, headers, cookies, and bodies are untrusted. Authentication alone is not sufficient; sensitive routes also need owner/staff authorization because the application operates on a single shared business dataset.
+- **Express API → PostgreSQL** — the API has direct write access to global accounting and settings tables. Broken authorization here exposes or corrupts all business data.
+- **Application → External marketplaces** — the server calls Manapool, eBay, and Scryfall with server-held credentials or tokens. Any route that triggers these calls inherits the seller account's privilege.
+- **OIDC / OAuth provider → Application** — Replit OIDC login and eBay OAuth callbacks must be bound to the intended authenticated actor and deployment state. Callback routes must not trust arbitrary authorization responses or reflect untrusted parameters into HTML.
+- **Public vs authenticated vs owner/admin boundary** — `/api/auth/*`, `/api/healthz`, and `/api/ebay/account-deletion` are public. Most remaining `/api` routes now require an authenticated session, but there is currently no server-side owner/admin or allowlist boundary after login.
+- **Production vs dev-only boundary** — artifact preview tooling and the mockup sandbox should usually be ignored unless a future deployment exposes them publicly.
 
 ## Scan Anchors
 
-- **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*`, `artifacts/accounting/src/App.tsx`, `app.py`
-- **Highest-risk areas:** `artifacts/api-server/src/routes/orders.ts`, `artifacts/api-server/src/routes/ebay.ts`, `artifacts/api-server/src/routes/purchases.ts`, `artifacts/api-server/src/routes/sales.ts`, `artifacts/api-server/src/routes/dashboard.ts`, `artifacts/api-server/src/routes/ebay-notifications.ts`, `lib/db/src/schema/*`, `app.py`
-- **Public vs authenticated vs admin surfaces:** no authenticated or admin boundary is currently implemented in the Express app; all mounted `/api` routes should be treated as public until proven otherwise.
-- **Usually dev-only:** `artifacts/mockup-sandbox/`, `scripts/`, `main.py`, `attached_assets/`
+- **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*`, `artifacts/accounting/src/App.tsx`
+- **Highest-risk areas:** `artifacts/api-server/src/routes/auth.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/orders.ts`, `artifacts/api-server/src/routes/manapick.ts`, `artifacts/api-server/src/routes/tcgplayer.ts`, `artifacts/api-server/src/routes/ebay.ts`, `artifacts/api-server/src/routes/dashboard.ts`, `lib/db/src/schema/auth.ts`, `lib/db/src/schema/settings.ts`
+- **Public vs authenticated vs admin surfaces:** public routes are limited to auth, health, and eBay deletion challenge/ack endpoints; all other mounted API routes should be treated as authenticated-but-not-authorized until a real owner/admin boundary is added.
+- **Usually dev-only:** `artifacts/mockup-sandbox/`, `scripts/`, `main.py`, `app.py`, `attached_assets/`
 
 ## Threat Categories
 
 ### Spoofing
 
-This project integrates with eBay OAuth and marketplace notification endpoints. Callback and webhook routes must verify that inbound requests are tied to the intended authenticated user or trusted provider. OAuth authorization requests must carry an unpredictable `state` value and callbacks must validate it before storing tokens. Notification endpoints must not trust caller-controlled host headers or accept unauthenticated state-changing requests.
+The application trusts Replit OIDC for identity and eBay OAuth for marketplace account linking. The required guarantee is not just that sessions are valid, but that only explicitly approved owner/staff identities can use those sessions to access the shared business dataset. eBay OAuth flows must also bind authorization responses to the initiating user and deployment state so one user cannot rebind the deployment-wide seller connection or trick another logged-in user into completing a callback.
 
 ### Tampering
 
-Financial records and marketplace sync state are high-value integrity targets. All create, delete, and sync endpoints must require server-side authentication and authorization before they can modify purchases, custom sales, cached marketplace orders, or stored tokens. Client-only navigation or obscurity is not a security boundary.
+Purchases, custom sales, pick state, shipment actions, and marketplace sync results are integrity-sensitive shared resources. All create, delete, sync, shipping, and token-storage routes must enforce server-side owner/staff authorization before mutating data or invoking upstream seller APIs. Client-side navigation, possession of any valid Replit account, or knowledge of a route path is not a sufficient security boundary.
 
 ### Information Disclosure
 
-Dashboard totals, weekly rollups, synced order histories, raw marketplace responses, and stored credentials are business-sensitive. API routes must avoid exposing these records to unauthenticated callers and must not reflect upstream error bodies, secrets, or raw third-party payloads unnecessarily. Secrets must not be placed in URLs, source-controlled config, or client-visible storage.
+Dashboard totals, weekly rollups, order histories, live Manapool order details, and imported marketplace data are business-sensitive. Protected routes must not disclose these records to arbitrary authenticated users, and HTML responses on authenticated routes must not reflect attacker-controlled input in a way that enables same-origin script execution. Secrets and tokens must not be placed in client-visible channels, source-controlled config, or unnecessary error bodies.
 
 ### Denial of Service
 
-Marketplace sync endpoints can trigger large volumes of upstream requests and database writes. Public callers must not be able to repeatedly invoke Manapool or eBay synchronization, inspect raw upstream responses, or otherwise consume expensive resources without authentication and abuse controls.
+Sync and enrichment endpoints can trigger large numbers of upstream requests and database writes. Attackers who obtain any application session should not be able to repeatedly invoke Manapool, eBay, or TCGPlayer-related operations without additional authorization and abuse controls. External-service failures should not cascade into persistent corruption of shared local state.
 
 ### Elevation of Privilege
 
-The primary elevation risk is public access to endpoints that run with server-held marketplace credentials or database privileges. All API routes that read or mutate accounting data, store OAuth refresh tokens, or trigger privileged marketplace operations must enforce an authenticated boundary before executing.
+The primary privilege-escalation risk is that the current application treats any authenticated identity as a full operator for one shared business tenant. Routes that read or mutate accounting data, store the eBay refresh token, mark orders shipped, or trigger privileged marketplace operations must enforce an owner/admin or explicit allowlist boundary rather than relying on authentication alone. Reflected XSS on authenticated routes is also high risk because it converts a lower-privileged web interaction into full same-origin access against the protected API.
