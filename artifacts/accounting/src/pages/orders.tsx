@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { format } from "date-fns";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, Upload, X } from "lucide-react";
 
 import { useOrders, useSyncOrders, useInspectOrder } from "@/hooks/use-orders";
 import { useEbayOrders, useSyncEbayOrders, useEbayAuthUrl } from "@/hooks/use-ebay";
+import { useTcgplayerOrders, useImportTcgplayerOrders } from "@/hooks/use-tcgplayer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -24,10 +25,11 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
-type Tab = "manapool" | "ebay";
+type Tab = "manapool" | "ebay" | "tcgplayer";
 
 export default function Orders() {
   const [activeTab, setActiveTab] = useState<Tab>("manapool");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: mpOrders, isLoading: mpLoading } = useOrders();
   const syncOrders = useSyncOrders();
@@ -36,6 +38,9 @@ export default function Orders() {
   const { data: ebayOrders, isLoading: ebayLoading } = useEbayOrders();
   const syncEbay = useSyncEbayOrders();
   const { data: ebayAuthData } = useEbayAuthUrl();
+
+  const { data: tcgOrders, isLoading: tcgLoading } = useTcgplayerOrders();
+  const importTcg = useImportTcgplayerOrders();
 
   const { toast } = useToast();
   const [inspectResult, setInspectResult] = useState<Record<string, unknown> | null>(null);
@@ -54,10 +59,32 @@ export default function Orders() {
     });
   };
 
+  const handleTcgFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const csv = ev.target?.result as string;
+      importTcg.mutate(csv, {
+        onSuccess: (data) => toast({ title: "Import complete", description: data.message }),
+        onError: (err) => toast({ variant: "destructive", title: "Import failed", description: err.message }),
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "manapool", label: "Manapool" },
     { id: "ebay", label: "eBay" },
+    { id: "tcgplayer", label: "TCGPlayer" },
   ];
+
+  const tabCount = (id: Tab) => {
+    if (id === "manapool") return mpOrders?.length ?? 0;
+    if (id === "ebay") return ebayOrders?.length ?? 0;
+    return tcgOrders?.length ?? 0;
+  };
 
   return (
     <div className="space-y-6">
@@ -109,6 +136,26 @@ export default function Orders() {
             </Button>
           </div>
         )}
+
+        {activeTab === "tcgplayer" && (
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleTcgFileUpload}
+            />
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importTcg.isPending}
+              data-testid="button-import-tcgplayer"
+            >
+              <Upload className={`mr-2 h-4 w-4 ${importTcg.isPending ? "animate-spin" : ""}`} />
+              {importTcg.isPending ? "Importing…" : "Import Order CSV"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -124,9 +171,7 @@ export default function Orders() {
             }`}
           >
             {t.label}
-            <span className="ml-2 text-xs tabular-nums opacity-60">
-              {t.id === "manapool" ? (mpOrders?.length ?? 0) : (ebayOrders?.length ?? 0)}
-            </span>
+            <span className="ml-2 text-xs tabular-nums opacity-60">{tabCount(t.id)}</span>
           </button>
         ))}
       </div>
@@ -256,6 +301,81 @@ export default function Orders() {
                         <TableCell className="text-right font-mono">{formatCurrency(order.grossTotal)}</TableCell>
                         <TableCell className="text-right font-mono text-blue-600 dark:text-blue-400">
                           {formatCurrency(order.shippingTotal ?? 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-destructive">
+                          -{formatCurrency(order.platformFees)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-bold text-primary">
+                          {formatCurrency(order.netPayout)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TCGPlayer table */}
+      {activeTab === "tcgplayer" && (
+        <Card>
+          <CardContent className="p-0">
+            {tcgLoading ? (
+              <div className="p-6 space-y-4">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : !tcgOrders || tcgOrders.length === 0 ? (
+              <div className="py-16 text-center text-muted-foreground">
+                <Upload className="h-10 w-10 mx-auto text-muted mb-4 opacity-50" />
+                <h3 className="font-medium text-foreground">No TCGPlayer orders imported</h3>
+                <p className="text-sm mt-1 mb-4 max-w-sm mx-auto">
+                  Export an Order CSV from TCGPlayer and upload it here. Orders are upserted by order number so re-importing is safe.
+                </p>
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importTcg.isPending}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Order CSV
+                </Button>
+                <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleTcgFileUpload} />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Order #</TableHead>
+                      <TableHead>Buyer</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Product</TableHead>
+                      <TableHead className="text-right">Shipping</TableHead>
+                      <TableHead className="text-right">TCG Fees (~10.25%)</TableHead>
+                      <TableHead className="text-right font-bold">Net Payout</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tcgOrders.map((order) => (
+                      <TableRow key={order.id} data-testid={`row-tcg-${order.id}`}>
+                        <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(order.date), "MMM d, yyyy")}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{order.id}</TableCell>
+                        <TableCell className="text-xs max-w-[120px] truncate" title={order.buyerName ?? ""}>
+                          {order.buyerName ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                            order.status?.toLowerCase() === "cancelled"
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          }`}>
+                            {order.status ?? "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(order.productAmt)}</TableCell>
+                        <TableCell className="text-right font-mono text-blue-600 dark:text-blue-400">
+                          {formatCurrency(order.shippingAmt)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-destructive">
                           -{formatCurrency(order.platformFees)}

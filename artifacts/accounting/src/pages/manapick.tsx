@@ -9,6 +9,8 @@ import {
   Package,
   ShoppingBag,
   CheckCircle2,
+  Upload,
+  X,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ interface MasterEntry {
   scryfall_id?: string;
   allocations: Record<string, number>;
   scryfall?: ScryfallCard;
+  source?: "manapool" | "tcgplayer";
 }
 
 interface ShippingAddress {
@@ -67,6 +70,18 @@ interface Order {
   shipping_address?: ShippingAddress;
   shipping_method?: string;
   items?: OrderItem[];
+  source?: "manapool" | "tcgplayer";
+}
+
+interface TcgPullCard {
+  name: string;
+  setCode: string;
+  setName: string;
+  collectorNumber: string;
+  quantity: number;
+  orderQuantity: number;
+  imageUrl: string;
+  setReleaseDate: string;
 }
 
 type Master = Record<string, MasterEntry>;
@@ -74,23 +89,11 @@ type SetsMap = Record<string, { name: string; released_at: string }>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const FINISH_LABELS: Record<string, string> = {
-  NF: "nonfoil",
-  FO: "foil",
-  EF: "etched",
-};
-
-/**
- * Build a Scryfall CDN image URL directly from a scryfall_id.
- * Pattern: https://cards.scryfall.io/normal/front/{id[0]}/{id[1]}/{id}.jpg
- * No API call needed — the CDN serves the image immediately.
- */
 function scryfallDirectUrl(scryfallId?: string): string | null {
   if (!scryfallId || scryfallId.length < 2) return null;
   return `https://cards.scryfall.io/normal/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
 }
 
-/** Fallback: extract image from enriched Scryfall API data (used for sorting context). */
 function cardImageFromData(card?: ScryfallCard): string | null {
   if (!card) return null;
   if (card.image_uris)
@@ -101,7 +104,6 @@ function cardImageFromData(card?: ScryfallCard): string | null {
   return null;
 }
 
-/** Returns the best image URL for a master entry — direct CDN first, enriched data as fallback. */
 function entryImageUrl(entry: MasterEntry): string | null {
   return scryfallDirectUrl(entry.scryfall_id) ?? cardImageFromData(entry.scryfall);
 }
@@ -124,7 +126,6 @@ function parseCollectorNumber(cn: string): [number, string] {
 
 function formatDate(iso: string): string {
   try {
-    // Parse as local noon to avoid timezone-driven off-by-one-day issues
     return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
       month: "short",
       year: "numeric",
@@ -159,7 +160,6 @@ function CardItem({
     <div
       className={`flex flex-col gap-1 transition-opacity duration-200 ${allPicked ? "opacity-30" : ""}`}
     >
-      {/* Card image */}
       <div
         className={
           isFormatted
@@ -176,7 +176,6 @@ function CardItem({
         )}
       </div>
 
-      {/* Name + set */}
       <div className="text-xs leading-tight mt-0.5">
         <p
           className={`font-semibold truncate ${allPicked ? "line-through text-muted-foreground" : ""}`}
@@ -190,10 +189,12 @@ function CardItem({
             : entry.finish === "etched"
               ? " 🔮"
               : ""}
+          {entry.source === "tcgplayer" && (
+            <span className="ml-1 text-blue-500 font-medium">TCG</span>
+          )}
         </p>
       </div>
 
-      {/* Bin buttons */}
       {Object.entries(entry.allocations).map(([oid, qty]) => {
         const binNum = orderToBin[oid] ?? "?";
         const pk = `${cardKey}|${oid}`;
@@ -232,11 +233,13 @@ export default function ManaPick() {
   const [loading, setLoading] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [tcgError, setTcgError] = useState<string | null>(null);
+  const [tcgLoading, setTcgLoading] = useState(false);
 
-  // sessionId ref so polling closure always has the current value
   const sessionIdRef = useRef("");
+  const tcgFileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Fetch orders ──────────────────────────────────────────────────────────
+  // ── Fetch Manapool orders (and background-sync accounting) ────────────────
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -244,8 +247,11 @@ export default function ManaPick() {
     setEnrichProgress({ done: 0, total: 0 });
 
     try {
-      // 1. Fetch orders (set info is included in the response)
-      const ordersRes = await fetch("/api/manapick/orders");
+      // Fetch orders + kick off background Manapool accounting sync
+      const [ordersRes] = await Promise.all([
+        fetch("/api/manapick/orders"),
+        fetch("/api/manapool/sync", { method: "POST" }).catch(() => {}),
+      ]);
 
       if (!ordersRes.ok) {
         const body = (await ordersRes.json().catch(() => ({}))) as {
@@ -261,13 +267,11 @@ export default function ManaPick() {
           sets: SetsMap;
         };
 
-      // Assign bin numbers
       const binMap: Record<string, number> = {};
       rawOrders.forEach((o, i) => {
         binMap[o.id] = i + 1;
       });
 
-      // Compute a stable session ID from the sorted order IDs
       const sid = [...rawOrders.map((o) => o.id)].sort().join("|");
       setSessionId(sid);
       sessionIdRef.current = sid;
@@ -279,7 +283,7 @@ export default function ManaPick() {
       setShipped({});
       setLoading(false);
 
-      // Load persisted pick state for this session
+      // Load persisted pick state
       try {
         const picksRes = await fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`);
         if (picksRes.ok) {
@@ -292,7 +296,7 @@ export default function ManaPick() {
         setPicked({});
       }
 
-      // 2. Enrich cards with Scryfall in background
+      // Enrich cards with Scryfall in background
       const cardKeys = Object.keys(rawMaster);
       if (cardKeys.length === 0) return;
 
@@ -309,7 +313,6 @@ export default function ManaPick() {
         };
       });
 
-      // Batch in chunks of 75
       const BATCH = 75;
       const allResults: Record<string, ScryfallCard> = {};
       for (let i = 0; i < identifiers.length; i += BATCH) {
@@ -327,7 +330,7 @@ export default function ManaPick() {
             Object.assign(allResults, results);
           }
         } catch {
-          /* continue on error */
+          /* continue */
         }
         setEnrichProgress({
           done: Math.min(i + BATCH, identifiers.length),
@@ -335,7 +338,6 @@ export default function ManaPick() {
         });
       }
 
-      // Merge scryfall data into master
       setMaster((prev) => {
         const next = { ...prev };
         for (const [key, card] of Object.entries(allResults)) {
@@ -349,6 +351,159 @@ export default function ManaPick() {
       setLoading(false);
       setEnrichProgress({ done: 0, total: 0 });
     }
+  }, []);
+
+  // ── Load TCGPlayer pull sheet CSV ─────────────────────────────────────────
+
+  const handleTcgFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setTcgError(null);
+    setTcgLoading(true);
+
+    try {
+      const csv = await file.text();
+      const res = await fetch("/api/tcgplayer/parse-pullsheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const { cards } = (await res.json()) as { cards: TcgPullCard[] };
+
+      // Merge TCGPlayer cards into master + create a synthetic "TCGPlayer" order
+      const TCG_ORDER_ID = "tcgplayer-pullsheet";
+      const tcgOrder: Order = {
+        id: TCG_ORDER_ID,
+        label: "TCGPlayer",
+        source: "tcgplayer",
+      };
+
+      setOrders((prev) => {
+        const without = prev.filter((o) => o.id !== TCG_ORDER_ID);
+        return [...without, tcgOrder];
+      });
+      setOrderToBin((prev) => {
+        const existing = { ...prev };
+        if (!existing[TCG_ORDER_ID]) {
+          const maxBin = Math.max(0, ...Object.values(existing));
+          existing[TCG_ORDER_ID] = maxBin + 1;
+        }
+        return existing;
+      });
+
+      setMaster((prev) => {
+        const next = { ...prev };
+        for (const card of cards) {
+          // Use set name to build a lookup key (no set code from TCGPlayer CSV)
+          // Key uses name + setName + collectorNumber since we don't have scryfall set code yet
+          const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|nonfoil`;
+          if (!next[key]) {
+            next[key] = {
+              name: card.name,
+              set: card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6),
+              collector_number: card.collectorNumber,
+              finish: "nonfoil",
+              quantity: 0,
+              allocations: {},
+              source: "tcgplayer",
+            };
+          }
+          next[key].quantity += card.orderQuantity;
+          next[key].allocations[TCG_ORDER_ID] =
+            (next[key].allocations[TCG_ORDER_ID] ?? 0) + card.orderQuantity;
+        }
+
+        // Update sessionId to include TCGPlayer order
+        const newSid = [...Object.keys(next).length > 0
+          ? [TCG_ORDER_ID, ...orders.filter(o => o.id !== TCG_ORDER_ID).map(o => o.id)]
+          : [TCG_ORDER_ID]
+        ].sort().join("|");
+        sessionIdRef.current = newSid;
+        setSessionId(newSid);
+
+        return next;
+      });
+
+      // Enrich TCGPlayer cards via Scryfall using card name
+      const tcgIdentifiers = cards.map((c) => ({
+        key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|nonfoil`,
+        name: c.name,
+        set: undefined,
+        collector_number: c.collectorNumber,
+        scryfall_id: undefined,
+      }));
+
+      // Also add set info for sorting
+      setSets((prev) => {
+        const next = { ...prev };
+        for (const c of cards) {
+          const pseudoCode = c.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+          if (!next[pseudoCode]) {
+            next[pseudoCode] = {
+              name: c.setName,
+              released_at: c.setReleaseDate || "1900-01-01",
+            };
+          }
+        }
+        return next;
+      });
+
+      if (tcgIdentifiers.length > 0) {
+        setEnrichProgress({ done: 0, total: tcgIdentifiers.length });
+        const allResults: Record<string, ScryfallCard> = {};
+        const BATCH = 75;
+        for (let i = 0; i < tcgIdentifiers.length; i += BATCH) {
+          const batch = tcgIdentifiers.slice(i, i + BATCH);
+          try {
+            const r = await fetch("/api/manapick/enrich", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ identifiers: batch }),
+            });
+            if (r.ok) {
+              const { results } = (await r.json()) as { results: Record<string, ScryfallCard> };
+              Object.assign(allResults, results);
+            }
+          } catch { /* continue */ }
+          setEnrichProgress({ done: Math.min(i + BATCH, tcgIdentifiers.length), total: tcgIdentifiers.length });
+        }
+        setMaster((prev) => {
+          const next = { ...prev };
+          for (const [key, card] of Object.entries(allResults)) {
+            if (next[key]) next[key] = { ...next[key]!, scryfall: card, scryfall_id: card.id };
+          }
+          return next;
+        });
+        setEnrichProgress({ done: 0, total: 0 });
+      }
+    } catch (err) {
+      setTcgError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTcgLoading(false);
+    }
+  }, [orders]);
+
+  const removeTcgCards = useCallback(() => {
+    const TCG_ORDER_ID = "tcgplayer-pullsheet";
+    setOrders((prev) => prev.filter((o) => o.id !== TCG_ORDER_ID));
+    setOrderToBin((prev) => {
+      const next = { ...prev };
+      delete next[TCG_ORDER_ID];
+      return next;
+    });
+    setMaster((prev) => {
+      const next: Master = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (v.source !== "tcgplayer") next[k] = v;
+      }
+      return next;
+    });
+    setTcgError(null);
   }, []);
 
   const togglePick = useCallback((pk: string) => {
@@ -378,9 +533,7 @@ export default function ManaPick() {
           const { picks } = (await r.json()) as { picks: Record<string, boolean> };
           setPicked(picks);
         }
-      } catch {
-        // silently ignore poll failures
-      }
+      } catch { /* ignore */ }
     }, 5000);
     return () => clearInterval(interval);
   }, [sessionId, phase]);
@@ -388,8 +541,7 @@ export default function ManaPick() {
   // ── Metrics ───────────────────────────────────────────────────────────────
 
   const { totalCards, pickedCards } = useMemo(() => {
-    let total = 0,
-      picked_ = 0;
+    let total = 0, picked_ = 0;
     for (const [key, entry] of Object.entries(master)) {
       for (const [oid, qty] of Object.entries(entry.allocations)) {
         total += qty;
@@ -404,14 +556,15 @@ export default function ManaPick() {
   const setGroups = useMemo(() => {
     const bySet: Record<string, Array<[string, MasterEntry]>> = {};
     for (const [key, entry] of Object.entries(master)) {
-      if (!bySet[entry.set]) bySet[entry.set] = [];
-      bySet[entry.set]!.push([key, entry]);
+      const setKey = entry.set;
+      if (!bySet[setKey]) bySet[setKey] = [];
+      bySet[setKey]!.push([key, entry]);
     }
     return Object.entries(bySet)
       .sort(([a], [b]) => {
         const da = sets[a]?.released_at ?? "1900-01-01";
         const db = sets[b]?.released_at ?? "1900-01-01";
-        return da.localeCompare(db); // oldest first
+        return da.localeCompare(db);
       })
       .map(([setCode, cards]) => ({
         setCode,
@@ -428,10 +581,15 @@ export default function ManaPick() {
 
   const isEmpty = Object.keys(master).length === 0;
   const isEnriching = enrichProgress.total > 0;
+  const hasTcg = orders.some((o) => o.id === "tcgplayer-pullsheet");
 
   // ── Pack view ─────────────────────────────────────────────────────────────
 
   async function shipOrder(oid: string) {
+    if (oid === "tcgplayer-pullsheet") {
+      setShipped((prev) => ({ ...prev, [oid]: true }));
+      return;
+    }
     const tn = tracking[oid] ?? "";
     try {
       const r = await fetch(`/api/manapick/orders/${oid}/ship`, {
@@ -459,10 +617,10 @@ export default function ManaPick() {
         <div>
           <h1 className="text-2xl font-bold">ManaPick</h1>
           <p className="text-sm text-muted-foreground">
-            Pick &amp; pack helper — sorted by set, color, and collector number
+            Pick &amp; pack helper — Manapool + TCGPlayer, sorted by set, color, and collector number
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={fetchOrders} disabled={loading} size="sm">
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -470,9 +628,46 @@ export default function ManaPick() {
               <RefreshCw className="h-4 w-4" />
             )}
             <span className="ml-1">
-              {loading ? "Fetching…" : isEmpty ? "Fetch Orders" : "Refresh"}
+              {loading ? "Fetching…" : isEmpty ? "Fetch Manapool" : "Refresh Manapool"}
             </span>
           </Button>
+
+          {/* TCGPlayer pull sheet upload */}
+          <input
+            ref={tcgFileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleTcgFile}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => tcgFileInputRef.current?.click()}
+            disabled={tcgLoading}
+          >
+            {tcgLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            <span className="ml-1">
+              {tcgLoading ? "Loading…" : hasTcg ? "Replace TCGPlayer CSV" : "Add TCGPlayer CSV"}
+            </span>
+          </Button>
+
+          {hasTcg && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={removeTcgCards}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-4 w-4" />
+              <span className="ml-1">Remove TCG</span>
+            </Button>
+          )}
+
           {!isEmpty && (
             <Button
               variant="outline"
@@ -483,18 +678,25 @@ export default function ManaPick() {
                 setPicked({});
                 setShipped({});
                 setOrderToBin({});
+                setTcgError(null);
               }}
             >
-              Clear
+              Clear All
             </Button>
           )}
         </div>
       </div>
 
-      {/* Error */}
+      {/* Errors */}
       {error && (
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm">
           {error}
+        </div>
+      )}
+      {tcgError && (
+        <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
+          <span>TCGPlayer: {tcgError}</span>
+          <button onClick={() => setTcgError(null)} className="ml-4 underline text-xs opacity-70 hover:opacity-100">dismiss</button>
         </div>
       )}
 
@@ -504,9 +706,7 @@ export default function ManaPick() {
           <p className="text-sm text-muted-foreground">
             Enriching card data… {enrichProgress.done}/{enrichProgress.total}
           </p>
-          <Progress
-            value={(enrichProgress.done / enrichProgress.total) * 100}
-          />
+          <Progress value={(enrichProgress.done / enrichProgress.total) * 100} />
         </div>
       )}
 
@@ -514,9 +714,9 @@ export default function ManaPick() {
       {!loading && isEmpty && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
           <ShoppingBag className="h-12 w-12 opacity-20" />
-          <p className="text-sm">
-            Click <strong>Fetch Orders</strong> to load your paid, unshipped
-            Manapool orders.
+          <p className="text-sm text-center max-w-sm">
+            Click <strong>Fetch Manapool</strong> to load your paid, unshipped Manapool orders,
+            or <strong>Add TCGPlayer CSV</strong> to load a TCGPlayer pull sheet.
           </p>
         </div>
       )}
@@ -531,10 +731,7 @@ export default function ManaPick() {
               { label: "Picked", value: pickedCards },
               { label: "Orders", value: orders.length },
             ].map(({ label, value }) => (
-              <div
-                key={label}
-                className="rounded-lg border bg-card p-3 text-center"
-              >
+              <div key={label} className="rounded-lg border bg-card p-3 text-center">
                 <p className="text-2xl font-bold tabular-nums">{value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
               </div>
@@ -542,26 +739,29 @@ export default function ManaPick() {
           </div>
 
           {totalCards > 0 && (
-            <Progress
-              value={(pickedCards / totalCards) * 100}
-              className="h-2"
-            />
+            <Progress value={(pickedCards / totalCards) * 100} className="h-2" />
           )}
+
+          {/* Platform badges */}
+          <div className="flex gap-2 text-xs">
+            {orders.some((o) => o.source !== "tcgplayer") && (
+              <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 font-medium">
+                Manapool
+              </span>
+            )}
+            {hasTcg && (
+              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                TCGPlayer
+              </span>
+            )}
+          </div>
 
           {/* Phase toggle */}
           <div className="flex gap-2">
-            <Button
-              variant={phase === "pick" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setPhase("pick")}
-            >
+            <Button variant={phase === "pick" ? "default" : "outline"} size="sm" onClick={() => setPhase("pick")}>
               <ShoppingBag className="h-4 w-4 mr-1" /> Pick
             </Button>
-            <Button
-              variant={phase === "pack" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setPhase("pack")}
-            >
+            <Button variant={phase === "pack" ? "default" : "outline"} size="sm" onClick={() => setPhase("pack")}>
               <Package className="h-4 w-4 mr-1" /> Pack &amp; Ship
             </Button>
           </div>
@@ -611,17 +811,16 @@ export default function ManaPick() {
                 </p>
                 {orders.map((o) => (
                   <div key={o.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-bold text-foreground">
-                      Bin {orderToBin[o.id]}
-                    </span>
+                    <span className="font-bold text-foreground">Bin {orderToBin[o.id]}</span>
                     <span className="text-muted-foreground">·</span>
                     <span className="font-mono text-muted-foreground">
                       {o.label ?? o.id.slice(0, 8)}
                     </span>
                     {o.shipping_address?.name && (
-                      <span className="text-muted-foreground">
-                        — {o.shipping_address.name}
-                      </span>
+                      <span className="text-muted-foreground">— {o.shipping_address.name}</span>
+                    )}
+                    {o.source === "tcgplayer" && (
+                      <span className="text-blue-500 font-medium">TCGPlayer</span>
                     )}
                     {shipped[o.id] && (
                       <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />
@@ -637,115 +836,105 @@ export default function ManaPick() {
                   const oid = order.id;
                   const binNum = orderToBin[oid];
                   const addr = order.shipping_address ?? {};
-                  const cardCount = (order.items ?? [])
-                    .filter((i) => i.product?.single)
-                    .reduce((s, i) => s + (i.quantity ?? 1), 0);
+                  const isTcg = order.source === "tcgplayer";
+                  const cardCount = isTcg
+                    ? Object.values(master)
+                        .filter((e) => e.source === "tcgplayer")
+                        .reduce((s, e) => s + (e.allocations[oid] ?? 0), 0)
+                    : (order.items ?? [])
+                        .filter((i) => i.product?.single)
+                        .reduce((s, i) => s + (i.quantity ?? 1), 0);
 
                   return (
                     <div
                       key={oid}
-                      className="rounded-lg border bg-card p-4 space-y-4"
+                      className="rounded-lg border bg-card p-4 space-y-3"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="font-bold">
-                            📦 Bin {binNum} —{" "}
-                            <span className="font-mono text-sm">
-                              {order.label ?? oid.slice(0, 8)}
-                            </span>
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {cardCount} card{cardCount !== 1 ? "s" : ""}
-                          </p>
-                          <pre className="text-xs mt-2 bg-muted rounded p-2 whitespace-pre-wrap font-mono leading-snug">
-                            {[
-                              addr.name,
-                              addr.line1,
-                              addr.line2,
-                              addr.line3,
-                              `${addr.city ?? ""}, ${addr.state ?? ""} ${addr.postal_code ?? ""}`,
-                              addr.country,
-                            ]
-                              .filter(Boolean)
-                              .join("\n")}
-                          </pre>
-                          {order.shipping_method && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Shipping:{" "}
-                              {order.shipping_method.replace(/_/g, " ")}
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold">Bin {binNum}</span>
+                            {isTcg && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                                TCGPlayer
+                              </span>
+                            )}
+                          </div>
+                          {!isTcg && (
+                            <>
+                              <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                                {order.label ?? oid.slice(0, 10)}
+                              </p>
+                              {addr.name && (
+                                <p className="text-sm font-medium mt-1">{addr.name}</p>
+                              )}
+                              {addr.line1 && (
+                                <p className="text-xs text-muted-foreground">
+                                  {addr.line1}
+                                  {addr.line2 ? `, ${addr.line2}` : ""}
+                                </p>
+                              )}
+                              {(addr.city || addr.state || addr.postal_code) && (
+                                <p className="text-xs text-muted-foreground">
+                                  {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ")}
+                                </p>
+                              )}
+                              {order.shipping_method && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  via {order.shipping_method}
+                                </p>
+                              )}
+                            </>
+                          )}
+                          {isTcg && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Ship via your normal TCGPlayer process
                             </p>
                           )}
                         </div>
-                        <div className="flex flex-col gap-2 min-w-[200px]">
-                          <Input
-                            placeholder="USPS tracking # (optional)"
-                            value={tracking[oid] ?? ""}
-                            onChange={(e) =>
-                              setTracking((prev) => ({
-                                ...prev,
-                                [oid]: e.target.value,
-                              }))
-                            }
-                            className="text-sm h-8"
-                          />
-                          <Button size="sm" onClick={() => shipOrder(oid)}>
-                            ✓ Mark shipped via USPS
-                          </Button>
-                        </div>
+                        <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                          {cardCount} card{cardCount !== 1 ? "s" : ""}
+                        </span>
                       </div>
 
-                      {/* Card thumbnails */}
-                      <div className="flex flex-wrap gap-2">
-                        {(order.items ?? []).map((item, idx) => {
-                          const single = item.product?.single;
-                          if (!single?.name) return null;
-                          const finishId = String(single.finish_id ?? "");
-                          const finish = FINISH_LABELS[finishId] ?? "nonfoil";
-                          const key = `${single.name}|${(single.set ?? "").toLowerCase()}|${single.number ?? ""}|${finish}`;
-                          const entry = master[key];
-                          const img = scryfallDirectUrl(single.scryfall_id) ?? (entry ? entryImageUrl(entry) : null);
-                          const qty = item.quantity ?? 1;
-                          return (
-                            <div
-                              key={idx}
-                              className="flex flex-col items-center text-xs w-64"
-                            >
-                              {img ? (
-                                <img
-                                  src={img}
-                                  alt={single.name}
-                                  className="w-full rounded-lg"
-                                />
-                              ) : (
-                                <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-center px-1">
-                                  {single.name}
-                                </div>
-                              )}
-                              <span className="font-bold">×{qty}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {!isTcg && (
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Tracking number (optional)"
+                            value={tracking[oid] ?? ""}
+                            onChange={(e) =>
+                              setTracking((prev) => ({ ...prev, [oid]: e.target.value }))
+                            }
+                            className="h-8 text-xs"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-8 shrink-0"
+                            onClick={() => shipOrder(oid)}
+                          >
+                            Mark Shipped
+                          </Button>
+                        </div>
+                      )}
+
+                      {isTcg && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={() => shipOrder(oid)}
+                        >
+                          Mark Packed
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
 
-              {/* Shipped */}
-              {orders.filter((o) => shipped[o.id]).length > 0 && (
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    ✅ Shipped ({orders.filter((o) => shipped[o.id]).length})
-                  </p>
-                  {orders
-                    .filter((o) => shipped[o.id])
-                    .map((o) => (
-                      <p key={o.id} className="text-sm">
-                        Bin {orderToBin[o.id]} — {o.label ?? o.id.slice(0, 8)}
-                        {o.shipping_address?.name
-                          ? ` — ${o.shipping_address.name}`
-                          : ""}
-                      </p>
-                    ))}
+              {orders.filter((o) => !shipped[o.id]).length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                  <CheckCircle2 className="h-10 w-10 text-green-500 opacity-80" />
+                  <p className="text-sm font-medium">All orders packed &amp; shipped!</p>
                 </div>
               )}
             </div>
