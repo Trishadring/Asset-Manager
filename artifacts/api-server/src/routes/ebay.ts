@@ -376,16 +376,17 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
     const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
     for (const tx of labels) {
-      // Skip refunds (CREDIT) — only import actual shipping charges (DEBIT)
-      if (!tx.transactionId || !tx.amount?.value || !tx.orderId || tx.bookingEntry === "CREDIT") continue;
+      if (!tx.transactionId || !tx.amount?.value || !tx.orderId) continue;
+      const rawAmount = parseFloat(tx.amount.value);
+      // Actual shipping charges are negative amounts (debit from account).
+      // Positive amounts are refunds/credits — skip them.
+      if (rawAmount >= 0) continue;
       const id = `ebay-ship-${tx.transactionId}`;
       rowMap.set(id, {
         id,
         date: tx.transactionDate ? new Date(tx.transactionDate) : new Date(),
-        description: tx.orderId
-          ? `eBay Shipping Label (order …${tx.orderId.slice(-8)})`
-          : "eBay Shipping Label",
-        amount: Math.abs(parseFloat(tx.amount.value)),
+        description: `eBay Shipping Label (order …${tx.orderId.slice(-8)})`,
+        amount: Math.abs(rawAmount),
       });
     }
     const rows = Array.from(rowMap.values());
