@@ -87,8 +87,27 @@ function parseOrderExportCSV(text: string): Array<{
 }
 
 /** Parse a TCGPlayer Pull Sheet CSV into ManaPick-compatible card entries */
+/**
+ * Strip TCGPlayer-specific suffixes from a product name to get the canonical
+ * card name Scryfall recognises.
+ *
+ * TCGPlayer appends things like:
+ *   "Otherworldly Gaze (2069) (Rainbow Foil)"
+ *   "Sol Ring (Etched Foil)"
+ *   "Black Lotus (Extended Art)"
+ */
+function toScryfallName(displayName: string): string {
+  return displayName
+    // strip "(collector_number)" e.g. "(2069)"
+    .replace(/\s*\(\d+\)/g, "")
+    // strip "(… Foil)", "(Extended Art)", "(Showcase)", "(Borderless)", "(Promo)", "(Retro Frame)", etc.
+    .replace(/\s*\([^)]*(?:foil|art|showcase|borderless|promo|retro|frame|anime|serialized|concept|ampersand|neon ink|invisible ink|oil slick)[^)]*\)/gi, "")
+    .trim();
+}
+
 function parsePullSheetCSV(text: string): Array<{
   name: string;
+  scryfallName: string;
   setCode: string;
   setName: string;
   collectorNumber: string;
@@ -161,6 +180,7 @@ function parsePullSheetCSV(text: string): Array<{
 
     results.push({
       name,
+      scryfallName: toScryfallName(name),
       setCode: "", // resolved via Scryfall
       setName,
       collectorNumber,

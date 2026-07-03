@@ -68,6 +68,7 @@ export function useParseTcgplayerPullSheet() {
 
 export interface TcgPullCard {
   name: string;
+  scryfallName: string;
   setCode: string;
   setName: string;
   collectorNumber: string;

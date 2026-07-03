@@ -173,6 +173,15 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
     const results: Record<string, unknown> = {};
     for (let i = 0; i < identifiers.length; i += 75) {
       const batch = identifiers.slice(i, i + 75);
+      // Build name-lookup index for this batch (items without scryfall_id or set)
+      // Key: cleaned name (lowercase) → batch item; used for fallback matching
+      const nameIndex = new Map<string, (typeof batch)[number]>();
+      for (const c of batch) {
+        if (!c.scryfall_id && !c.set && c.name) {
+          nameIndex.set(c.name.toLowerCase(), c);
+        }
+      }
+
       const sfIds = batch.map((c) => {
         if (c.scryfall_id) return { id: c.scryfall_id };
         if (c.set && c.collector_number) return { set: c.set, collector_number: c.collector_number };
@@ -200,13 +209,20 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
         req.log.info({ found: found.length, notFound: notFound.length }, "scryfall results");
 
         for (const card of found) {
-          const matched = batch.find(
+          // Try exact matches first (id, then set+collector_number)
+          let matched = batch.find(
             (b) =>
               (b.scryfall_id && b.scryfall_id === card["id"]) ||
               (b.set && b.collector_number &&
                 b.set === String(card["set"] ?? "").toLowerCase() &&
                 b.collector_number === String(card["collector_number"] ?? "")),
           );
+          // Fallback: match by card name for name-only lookups
+          if (!matched) {
+            const cardName = String(card["name"] ?? "").toLowerCase();
+            matched = nameIndex.get(cardName);
+            if (matched) nameIndex.delete(cardName); // consume so duplicates don't double-match
+          }
           if (matched) results[matched.key] = card;
         }
       } else {

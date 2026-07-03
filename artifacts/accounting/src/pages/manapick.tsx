@@ -437,10 +437,11 @@ export default function ManaPick() {
         return next;
       });
 
-      // Enrich TCGPlayer cards via Scryfall using card name
+      // Enrich TCGPlayer cards via Scryfall using cleaned card name
+      // scryfallName strips TCGPlayer suffixes like "(2069) (Rainbow Foil)" → "Otherworldly Gaze"
       const tcgIdentifiers = cards.map((c) => ({
         key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|nonfoil`,
-        name: c.name,
+        name: c.scryfallName,
         set: undefined,
         collector_number: c.collectorNumber,
         scryfall_id: undefined,
