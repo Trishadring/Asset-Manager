@@ -326,6 +326,7 @@ interface EbayShippingTransaction {
   transactionId?: string;
   transactionDate?: string;
   transactionType?: string;
+  bookingEntry?: string; // "DEBIT" = charge, "CREDIT" = refund
   amount?: { value?: string; currency?: string };
   orderId?: string;
 }
@@ -338,24 +339,11 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // Only pull labels on or after Mar 29 2026
     const FROM_DATE = "2026-03-29T00:00:00.000Z";
 
-    // Remove previously-synced labels older than the cutoff, and any
-    // no-order-ID bulk charges (description = "eBay Shipping Label" exactly).
+    // Wipe all previously-synced eBay shipping rows before re-importing so
+    // refunds, bulk charges, and out-of-range entries don't accumulate.
     await db
       .delete(purchasesTable)
-      .where(
-        and(
-          like(purchasesTable.id, "ebay-ship-%"),
-          lt(purchasesTable.date, new Date(FROM_DATE))
-        )
-      );
-    await db
-      .delete(purchasesTable)
-      .where(
-        and(
-          like(purchasesTable.id, "ebay-ship-%"),
-          eq(purchasesTable.description, "eBay Shipping Label")
-        )
-      );
+      .where(like(purchasesTable.id, "ebay-ship-%"));
 
     const labels: EbayShippingTransaction[] = [];
     let offset = 0;
@@ -388,7 +376,8 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
     // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
     const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
     for (const tx of labels) {
-      if (!tx.transactionId || !tx.amount?.value || !tx.orderId) continue;
+      // Skip refunds (CREDIT) — only import actual shipping charges (DEBIT)
+      if (!tx.transactionId || !tx.amount?.value || !tx.orderId || tx.bookingEntry === "CREDIT") continue;
       const id = `ebay-ship-${tx.transactionId}`;
       rowMap.set(id, {
         id,
