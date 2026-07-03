@@ -6,4 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "requests>=2.33.1",
     "streamlit>=1.56.0",
+    "tornado>=6.5.7",
+    "gitpython>=3.1.50",
+    "urllib3>=2.7.0",
+    "idna>=3.18",
 ]
