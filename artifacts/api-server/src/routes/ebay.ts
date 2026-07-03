@@ -375,16 +375,22 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
       return;
     }
 
-    const rows = labels
-      .filter((tx) => tx.transactionId && tx.amount?.value)
-      .map((tx) => ({
-        id: `ebay-ship-${tx.transactionId}`,
+    // Deduplicate by transaction ID — eBay can return the same ID in multiple
+    // pages, and ON CONFLICT DO UPDATE rejects duplicates within one statement.
+    const rowMap = new Map<string, { id: string; date: Date; description: string; amount: number }>();
+    for (const tx of labels) {
+      if (!tx.transactionId || !tx.amount?.value) continue;
+      const id = `ebay-ship-${tx.transactionId}`;
+      rowMap.set(id, {
+        id,
         date: tx.transactionDate ? new Date(tx.transactionDate) : new Date(),
         description: tx.orderId
           ? `eBay Shipping Label (order …${tx.orderId.slice(-8)})`
           : "eBay Shipping Label",
-        amount: Math.abs(parseFloat(tx.amount!.value!)),
-      }));
+        amount: Math.abs(parseFloat(tx.amount.value)),
+      });
+    }
+    const rows = Array.from(rowMap.values());
 
     if (rows.length === 0) {
       res.json({ message: "No valid shipping transactions to sync", synced: 0, total: labels.length });
