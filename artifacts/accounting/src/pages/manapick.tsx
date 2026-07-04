@@ -115,7 +115,7 @@ function cardImageFromData(card?: ScryfallCard): string | null {
 }
 
 function entryImageUrl(entry: MasterEntry): string | null {
-  return scryfallDirectUrl(entry.scryfall_id) ?? cardImageFromData(entry.scryfall);
+  return cardImageFromData(entry.scryfall) ?? scryfallDirectUrl(entry.scryfall_id);
 }
 
 function colorSortIndex(card?: ScryfallCard): number {
