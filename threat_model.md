@@ -8,7 +8,7 @@ Assumptions for security review:
 - Only production-reachable issues are in scope.
 - The current public deployment exposes `/api` and `/accounting/`; the root path returns an artifact listing/404.
 - `app.py` is not part of the currently reachable public deployment unless future scans show otherwise.
-- `artifacts/mockup-sandbox/`, `scripts/`, `main.py`, and attached assets are dev-only unless production reachability is demonstrated.
+- `app.py` and attached assets are dev-only unless production reachability is demonstrated.
 - Replit-managed TLS is assumed in production.
 - `NODE_ENV` is assumed to be `production` in production deployments.
 
@@ -34,7 +34,7 @@ Assumptions for security review:
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/*`, `artifacts/accounting/src/App.tsx`
 - **Highest-risk areas:** `artifacts/api-server/src/routes/auth.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/api-server/src/routes/orders.ts`, `artifacts/api-server/src/routes/manapick.ts`, `artifacts/api-server/src/routes/tcgplayer.ts`, `artifacts/api-server/src/routes/ebay.ts`, `artifacts/api-server/src/routes/dashboard.ts`, `lib/db/src/schema/auth.ts`, `lib/db/src/schema/settings.ts`
 - **Public vs authenticated vs admin surfaces:** public routes are limited to auth, health, and eBay deletion challenge/ack endpoints; all other mounted API routes should be treated as authenticated-but-not-authorized until a real owner/admin boundary is added.
-- **Usually dev-only:** `artifacts/mockup-sandbox/`, `scripts/`, `main.py`, `app.py`, `attached_assets/`
+- **Usually dev-only:** `app.py`, `attached_assets/`
 
 ## Threat Categories
 
