@@ -21,7 +21,11 @@ import {
   MinusCircle,
   Tag,
 } from "lucide-react";
-import { useDeductFromManapool, type DeductionResult, type TcgPullCard } from "@/hooks/use-tcgplayer";
+import {
+  useDeductFromManapool,
+  type DeductionResult,
+  type TcgPullCard,
+} from "@/hooks/use-tcgplayer";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -107,15 +111,27 @@ function scryfallDirectUrl(scryfallId?: string): string | null {
 function cardImageFromData(card?: ScryfallCard): string | null {
   if (!card) return null;
   if (card.image_uris)
-    return card.image_uris.normal ?? card.image_uris.large ?? card.image_uris.small ?? null;
+    return (
+      card.image_uris.normal ??
+      card.image_uris.large ??
+      card.image_uris.small ??
+      null
+    );
   const face = card.card_faces?.[0];
   if (face?.image_uris)
-    return face.image_uris.normal ?? face.image_uris.large ?? face.image_uris.small ?? null;
+    return (
+      face.image_uris.normal ??
+      face.image_uris.large ??
+      face.image_uris.small ??
+      null
+    );
   return null;
 }
 
 function entryImageUrl(entry: MasterEntry): string | null {
-  return cardImageFromData(entry.scryfall) ?? scryfallDirectUrl(entry.scryfall_id);
+  return (
+    cardImageFromData(entry.scryfall) ?? scryfallDirectUrl(entry.scryfall_id)
+  );
 }
 
 function colorSortIndex(card?: ScryfallCard): number {
@@ -261,7 +277,9 @@ export default function ManaPick() {
 
   // Deduct from Manapool state
   const [tcgCards, setTcgCards] = useState<TcgPullCard[]>([]);
-  const [deductPreview, setDeductPreview] = useState<DeductionResult | null>(null);
+  const [deductPreview, setDeductPreview] = useState<DeductionResult | null>(
+    null,
+  );
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const deductMutation = useDeductFromManapool();
 
@@ -288,7 +306,9 @@ export default function ManaPick() {
       if (!Array.isArray(cached.orders) || !cached.master) return;
 
       const binMap: Record<string, number> = {};
-      cached.orders.forEach((o, i) => { binMap[o.id] = i + 1; });
+      cached.orders.forEach((o, i) => {
+        binMap[o.id] = i + 1;
+      });
       const sid = [...cached.orders.map((o) => o.id)].sort().join("|");
 
       setOrders(cached.orders);
@@ -331,12 +351,15 @@ export default function ManaPick() {
         throw new Error(body.error ?? `HTTP ${ordersRes.status}`);
       }
 
-      const { orders: rawOrders, master: rawMaster, sets: rawSets } =
-        (await ordersRes.json()) as {
-          orders: Order[];
-          master: Master;
-          sets: SetsMap;
-        };
+      const {
+        orders: rawOrders,
+        master: rawMaster,
+        sets: rawSets,
+      } = (await ordersRes.json()) as {
+        orders: Order[];
+        master: Master;
+        sets: SetsMap;
+      };
 
       const binMap: Record<string, number> = {};
       rawOrders.forEach((o, i) => {
@@ -356,9 +379,13 @@ export default function ManaPick() {
 
       // Load persisted pick state
       try {
-        const picksRes = await fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`);
+        const picksRes = await fetch(
+          `/api/manapick/picks?session=${encodeURIComponent(sid)}`,
+        );
         if (picksRes.ok) {
-          const { picks: savedPicks } = (await picksRes.json()) as { picks: Record<string, boolean> };
+          const { picks: savedPicks } = (await picksRes.json()) as {
+            picks: Record<string, boolean>;
+          };
           setPicked(savedPicks);
         } else {
           setPicked({});
@@ -411,19 +438,23 @@ export default function ManaPick() {
 
       const enrichedMaster = { ...rawMaster };
       for (const [key, card] of Object.entries(allResults)) {
-        if (enrichedMaster[key]) enrichedMaster[key] = { ...enrichedMaster[key]!, scryfall: card };
+        if (enrichedMaster[key])
+          enrichedMaster[key] = { ...enrichedMaster[key]!, scryfall: card };
       }
       setMaster(enrichedMaster);
       setEnrichProgress({ done: 0, total: 0 });
 
       try {
         const ts = Date.now();
-        localStorage.setItem(CACHE_KEY, JSON.stringify({
-          orders: rawOrders,
-          master: enrichedMaster,
-          sets: rawSets,
-          cachedAt: ts,
-        }));
+        localStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({
+            orders: rawOrders,
+            master: enrichedMaster,
+            sets: rawSets,
+            cachedAt: ts,
+          }),
+        );
         setCachedAt(ts);
       } catch {
         // quota exceeded or unavailable — ignore
@@ -437,144 +468,173 @@ export default function ManaPick() {
 
   // ── Load TCGPlayer pull sheet CSV ─────────────────────────────────────────
 
-  const handleTcgFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    setTcgError(null);
-    setTcgLoading(true);
+  const handleTcgFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = "";
+      setTcgError(null);
+      setTcgLoading(true);
 
-    try {
-      const csv = await file.text();
-      const res = await fetch("/api/tcgplayer/parse-pullsheet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-      const { cards } = (await res.json()) as { cards: TcgPullCard[] };
-
-      // Store cards for deduct-from-Manapool feature
-      setTcgCards(cards);
-      setDeductPreview(null);
-
-      // Merge TCGPlayer cards into master + create a synthetic "TCGPlayer" order
-      const TCG_ORDER_ID = "tcgplayer-pullsheet";
-      const tcgOrder: Order = {
-        id: TCG_ORDER_ID,
-        label: "TCGPlayer",
-        source: "tcgplayer",
-      };
-
-      setOrders((prev) => {
-        const without = prev.filter((o) => o.id !== TCG_ORDER_ID);
-        return [...without, tcgOrder];
-      });
-      setOrderToBin((prev) => {
-        const existing = { ...prev };
-        if (!existing[TCG_ORDER_ID]) {
-          const maxBin = Math.max(0, ...Object.values(existing));
-          existing[TCG_ORDER_ID] = maxBin + 1;
+      try {
+        const csv = await file.text();
+        const res = await fetch("/api/tcgplayer/parse-pullsheet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ csv }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(body.error ?? `HTTP ${res.status}`);
         }
-        return existing;
-      });
+        const { cards } = (await res.json()) as { cards: TcgPullCard[] };
 
-      setMaster((prev) => {
-        const next = { ...prev };
-        for (const card of cards) {
-          // Key: prefer resolved Scryfall set code; fall back to TCGPlayer set name slug
-          const setSlug = card.setCode || card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
-          const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|${card.finish}`;
-          if (!next[key]) {
-            next[key] = {
-              name: card.name,
-              set: setSlug,
-              collector_number: card.collectorNumber,
-              finish: card.finish,
-              quantity: 0,
-              allocations: {},
-              source: "tcgplayer",
-            };
+        // Store cards for deduct-from-Manapool feature
+        setTcgCards(cards);
+        setDeductPreview(null);
+
+        // Merge TCGPlayer cards into master + create a synthetic "TCGPlayer" order
+        const TCG_ORDER_ID = "tcgplayer-pullsheet";
+        const tcgOrder: Order = {
+          id: TCG_ORDER_ID,
+          label: "TCGPlayer",
+          source: "tcgplayer",
+        };
+
+        setOrders((prev) => {
+          const without = prev.filter((o) => o.id !== TCG_ORDER_ID);
+          return [...without, tcgOrder];
+        });
+        setOrderToBin((prev) => {
+          const existing = { ...prev };
+          if (!existing[TCG_ORDER_ID]) {
+            const maxBin = Math.max(0, ...Object.values(existing));
+            existing[TCG_ORDER_ID] = maxBin + 1;
           }
-          next[key].quantity += card.orderQuantity;
-          next[key].allocations[TCG_ORDER_ID] =
-            (next[key].allocations[TCG_ORDER_ID] ?? 0) + card.orderQuantity;
-        }
+          return existing;
+        });
 
-        // Update sessionId to include TCGPlayer order
-        const newSid = [...Object.keys(next).length > 0
-          ? [TCG_ORDER_ID, ...orders.filter(o => o.id !== TCG_ORDER_ID).map(o => o.id)]
-          : [TCG_ORDER_ID]
-        ].sort().join("|");
-        sessionIdRef.current = newSid;
-        setSessionId(newSid);
-
-        return next;
-      });
-
-      // Enrich TCGPlayer cards via Scryfall.
-      // When a set code was resolved, use set+collector_number for exact printing lookup.
-      // Otherwise fall back to cleaned card name.
-      const tcgIdentifiers = cards.map((c) => ({
-        key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|${c.finish}`,
-        name: c.scryfallName,
-        set: c.setCode || undefined,
-        collector_number: c.collectorNumber || undefined,
-        scryfall_id: undefined,
-      }));
-
-      // Add set info for sorting — use resolved code when available
-      setSets((prev) => {
-        const next = { ...prev };
-        for (const c of cards) {
-          const code = c.setCode || c.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
-          if (!next[code]) {
-            next[code] = {
-              name: c.setName,
-              released_at: c.setReleaseDate || "1900-01-01",
-            };
-          }
-        }
-        return next;
-      });
-
-      if (tcgIdentifiers.length > 0) {
-        setEnrichProgress({ done: 0, total: tcgIdentifiers.length });
-        const allResults: Record<string, ScryfallCard> = {};
-        const BATCH = 75;
-        for (let i = 0; i < tcgIdentifiers.length; i += BATCH) {
-          const batch = tcgIdentifiers.slice(i, i + BATCH);
-          try {
-            const r = await fetch("/api/manapick/enrich", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ identifiers: batch }),
-            });
-            if (r.ok) {
-              const { results } = (await r.json()) as { results: Record<string, ScryfallCard> };
-              Object.assign(allResults, results);
-            }
-          } catch { /* continue */ }
-          setEnrichProgress({ done: Math.min(i + BATCH, tcgIdentifiers.length), total: tcgIdentifiers.length });
-        }
         setMaster((prev) => {
           const next = { ...prev };
-          for (const [key, card] of Object.entries(allResults)) {
-            if (next[key]) next[key] = { ...next[key]!, scryfall: card, scryfall_id: card.id };
+          for (const card of cards) {
+            // Key: prefer resolved Scryfall set code; fall back to TCGPlayer set name slug
+            const setSlug =
+              card.setCode ||
+              card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+            const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|${card.finish}`;
+            if (!next[key]) {
+              next[key] = {
+                name: card.name,
+                set: setSlug,
+                collector_number: card.collectorNumber,
+                finish: card.finish,
+                quantity: 0,
+                allocations: {},
+                source: "tcgplayer",
+              };
+            }
+            next[key].quantity += card.orderQuantity;
+            next[key].allocations[TCG_ORDER_ID] =
+              (next[key].allocations[TCG_ORDER_ID] ?? 0) + card.orderQuantity;
+          }
+
+          // Update sessionId to include TCGPlayer order
+          const newSid = [
+            ...(Object.keys(next).length > 0
+              ? [
+                  TCG_ORDER_ID,
+                  ...orders
+                    .filter((o) => o.id !== TCG_ORDER_ID)
+                    .map((o) => o.id),
+                ]
+              : [TCG_ORDER_ID]),
+          ]
+            .sort()
+            .join("|");
+          sessionIdRef.current = newSid;
+          setSessionId(newSid);
+
+          return next;
+        });
+
+        // Enrich TCGPlayer cards via Scryfall.
+        // When a set code was resolved, use set+collector_number for exact printing lookup.
+        // Otherwise fall back to cleaned card name.
+        const tcgIdentifiers = cards.map((c) => ({
+          key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|${c.finish}`,
+          name: c.scryfallName,
+          set: c.setCode || undefined,
+          collector_number: c.collectorNumber || undefined,
+          scryfall_id: undefined,
+        }));
+
+        // Add set info for sorting — use resolved code when available
+        setSets((prev) => {
+          const next = { ...prev };
+          for (const c of cards) {
+            const code =
+              c.setCode ||
+              c.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+            if (!next[code]) {
+              next[code] = {
+                name: c.setName,
+                released_at: c.setReleaseDate || "1900-01-01",
+              };
+            }
           }
           return next;
         });
-        setEnrichProgress({ done: 0, total: 0 });
+
+        if (tcgIdentifiers.length > 0) {
+          setEnrichProgress({ done: 0, total: tcgIdentifiers.length });
+          const allResults: Record<string, ScryfallCard> = {};
+          const BATCH = 75;
+          for (let i = 0; i < tcgIdentifiers.length; i += BATCH) {
+            const batch = tcgIdentifiers.slice(i, i + BATCH);
+            try {
+              const r = await fetch("/api/manapick/enrich", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ identifiers: batch }),
+              });
+              if (r.ok) {
+                const { results } = (await r.json()) as {
+                  results: Record<string, ScryfallCard>;
+                };
+                Object.assign(allResults, results);
+              }
+            } catch {
+              /* continue */
+            }
+            setEnrichProgress({
+              done: Math.min(i + BATCH, tcgIdentifiers.length),
+              total: tcgIdentifiers.length,
+            });
+          }
+          setMaster((prev) => {
+            const next = { ...prev };
+            for (const [key, card] of Object.entries(allResults)) {
+              if (next[key])
+                next[key] = {
+                  ...next[key]!,
+                  scryfall: card,
+                  scryfall_id: card.id,
+                };
+            }
+            return next;
+          });
+          setEnrichProgress({ done: 0, total: 0 });
+        }
+      } catch (err) {
+        setTcgError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setTcgLoading(false);
       }
-    } catch (err) {
-      setTcgError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setTcgLoading(false);
-    }
-  }, [orders]);
+    },
+    [orders],
+  );
 
   const removeTcgCards = useCallback(() => {
     const TCG_ORDER_ID = "tcgplayer-pullsheet";
@@ -598,24 +658,30 @@ export default function ManaPick() {
 
   const handleDeductPreview = useCallback(() => {
     if (tcgCards.length === 0) return;
-    deductMutation.mutate({ cards: tcgCards, apply: false }, {
-      onSuccess: (result) => {
-        setDeductPreview(result);
-        setDeductDialogOpen(true);
+    deductMutation.mutate(
+      { cards: tcgCards, apply: false },
+      {
+        onSuccess: (result) => {
+          setDeductPreview(result);
+          setDeductDialogOpen(true);
+        },
+        onError: (err) => setTcgError(`Deduct preview failed: ${err.message}`),
       },
-      onError: (err) => setTcgError(`Deduct preview failed: ${err.message}`),
-    });
+    );
   }, [tcgCards, deductMutation]);
 
   const handleDeductApply = useCallback(() => {
     if (tcgCards.length === 0) return;
-    deductMutation.mutate({ cards: tcgCards, apply: true }, {
-      onSuccess: (result) => {
-        setDeductPreview(result);
-        // Keep dialog open showing the result
+    deductMutation.mutate(
+      { cards: tcgCards, apply: true },
+      {
+        onSuccess: (result) => {
+          setDeductPreview(result);
+          // Keep dialog open showing the result
+        },
+        onError: (err) => setTcgError(`Deduct failed: ${err.message}`),
       },
-      onError: (err) => setTcgError(`Deduct failed: ${err.message}`),
-    });
+    );
   }, [tcgCards, deductMutation]);
 
   const togglePick = useCallback((pk: string) => {
@@ -640,12 +706,18 @@ export default function ManaPick() {
     if (!sid || phase !== "pick") return;
     const interval = setInterval(async () => {
       try {
-        const r = await fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`);
+        const r = await fetch(
+          `/api/manapick/picks?session=${encodeURIComponent(sid)}`,
+        );
         if (r.ok) {
-          const { picks } = (await r.json()) as { picks: Record<string, boolean> };
+          const { picks } = (await r.json()) as {
+            picks: Record<string, boolean>;
+          };
           setPicked(picks);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }, 5000);
     return () => clearInterval(interval);
   }, [sessionId, phase]);
@@ -653,7 +725,8 @@ export default function ManaPick() {
   // ── Metrics ───────────────────────────────────────────────────────────────
 
   const { totalCards, pickedCards } = useMemo(() => {
-    let total = 0, picked_ = 0;
+    let total = 0,
+      picked_ = 0;
     for (const [key, entry] of Object.entries(master)) {
       for (const [oid, qty] of Object.entries(entry.allocations)) {
         total += qty;
@@ -750,7 +823,8 @@ export default function ManaPick() {
         <div>
           <h1 className="text-2xl font-bold">ManaPick</h1>
           <p className="text-sm text-muted-foreground">
-            Pick &amp; pack helper — Manapool + TCGPlayer, sorted by set, color, and collector number
+            Pick &amp; pack helper — Manapool + TCGPlayer, sorted by set, color,
+            and collector number
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -761,7 +835,11 @@ export default function ManaPick() {
               <RefreshCw className="h-4 w-4" />
             )}
             <span className="ml-1">
-              {loading ? "Fetching…" : isEmpty ? "Fetch Manapool" : "Refresh Manapool"}
+              {loading
+                ? "Fetching…"
+                : isEmpty
+                  ? "Fetch Manapool"
+                  : "Refresh Manapool"}
             </span>
           </Button>
           {cachedAt !== null && !loading && (
@@ -790,7 +868,11 @@ export default function ManaPick() {
               <Upload className="h-4 w-4" />
             )}
             <span className="ml-1">
-              {tcgLoading ? "Loading…" : hasTcg ? "Replace TCGPlayer CSV" : "Add TCGPlayer CSV"}
+              {tcgLoading
+                ? "Loading…"
+                : hasTcg
+                  ? "Replace TCGPlayer CSV"
+                  : "Add TCGPlayer CSV"}
             </span>
           </Button>
 
@@ -836,7 +918,11 @@ export default function ManaPick() {
               <Tag className="h-4 w-4" />
             )}
             <span className="ml-1">
-              {ebayLoading ? "Loading…" : ebayOrders.length > 0 ? "Refresh eBay" : "Fetch eBay"}
+              {ebayLoading
+                ? "Loading…"
+                : ebayOrders.length > 0
+                  ? "Refresh eBay"
+                  : "Fetch eBay"}
             </span>
           </Button>
 
@@ -870,13 +956,23 @@ export default function ManaPick() {
       {tcgError && (
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
           <span>TCGPlayer: {tcgError}</span>
-          <button onClick={() => setTcgError(null)} className="ml-4 underline text-xs opacity-70 hover:opacity-100">dismiss</button>
+          <button
+            onClick={() => setTcgError(null)}
+            className="ml-4 underline text-xs opacity-70 hover:opacity-100"
+          >
+            dismiss
+          </button>
         </div>
       )}
       {ebayError && (
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
           <span>eBay: {ebayError}</span>
-          <button onClick={() => setEbayError(null)} className="ml-4 underline text-xs opacity-70 hover:opacity-100">dismiss</button>
+          <button
+            onClick={() => setEbayError(null)}
+            className="ml-4 underline text-xs opacity-70 hover:opacity-100"
+          >
+            dismiss
+          </button>
         </div>
       )}
 
@@ -886,7 +982,9 @@ export default function ManaPick() {
           <p className="text-sm text-muted-foreground">
             Enriching card data… {enrichProgress.done}/{enrichProgress.total}
           </p>
-          <Progress value={(enrichProgress.done / enrichProgress.total) * 100} />
+          <Progress
+            value={(enrichProgress.done / enrichProgress.total) * 100}
+          />
         </div>
       )}
 
@@ -895,8 +993,9 @@ export default function ManaPick() {
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
           <ShoppingBag className="h-12 w-12 opacity-20" />
           <p className="text-sm text-center max-w-sm">
-            Click <strong>Fetch Manapool</strong> to load your paid, unshipped Manapool orders,
-            or <strong>Add TCGPlayer CSV</strong> to load a TCGPlayer pull sheet.
+            Click <strong>Fetch Manapool</strong> to load your paid, unshipped
+            Manapool orders, or <strong>Add TCGPlayer CSV</strong> to load a
+            TCGPlayer pull sheet.
           </p>
         </div>
       )}
@@ -911,7 +1010,10 @@ export default function ManaPick() {
               { label: "Picked", value: pickedCards },
               { label: "Orders", value: orders.length },
             ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg border bg-card p-3 text-center">
+              <div
+                key={label}
+                className="rounded-lg border bg-card p-3 text-center"
+              >
                 <p className="text-2xl font-bold tabular-nums">{value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
               </div>
@@ -919,7 +1021,10 @@ export default function ManaPick() {
           </div>
 
           {totalCards > 0 && (
-            <Progress value={(pickedCards / totalCards) * 100} className="h-2" />
+            <Progress
+              value={(pickedCards / totalCards) * 100}
+              className="h-2"
+            />
           )}
 
           {/* Platform badges */}
@@ -938,10 +1043,18 @@ export default function ManaPick() {
 
           {/* Phase toggle */}
           <div className="flex gap-2">
-            <Button variant={phase === "pick" ? "default" : "outline"} size="sm" onClick={() => setPhase("pick")}>
+            <Button
+              variant={phase === "pick" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setPhase("pick")}
+            >
               <ShoppingBag className="h-4 w-4 mr-1" /> Pick
             </Button>
-            <Button variant={phase === "pack" ? "default" : "outline"} size="sm" onClick={() => setPhase("pack")}>
+            <Button
+              variant={phase === "pack" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setPhase("pack")}
+            >
               <Package className="h-4 w-4 mr-1" /> Pack &amp; Ship
             </Button>
           </div>
@@ -990,16 +1103,22 @@ export default function ManaPick() {
                 </p>
                 {orders.map((o) => (
                   <div key={o.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-bold text-foreground">Bin {orderToBin[o.id]}</span>
+                    <span className="font-bold text-foreground">
+                      Bin {orderToBin[o.id]}
+                    </span>
                     <span className="text-muted-foreground">·</span>
                     <span className="font-mono text-muted-foreground">
                       {o.label ?? o.id.slice(0, 8)}
                     </span>
                     {o.shipping_address?.name && (
-                      <span className="text-muted-foreground">— {o.shipping_address.name}</span>
+                      <span className="text-muted-foreground">
+                        — {o.shipping_address.name}
+                      </span>
                     )}
                     {o.source === "tcgplayer" && (
-                      <span className="text-blue-500 font-medium">TCGPlayer</span>
+                      <span className="text-blue-500 font-medium">
+                        TCGPlayer
+                      </span>
                     )}
                     {shipped[o.id] && (
                       <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />
@@ -1032,7 +1151,9 @@ export default function ManaPick() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">Bin {binNum}</span>
+                            <span className="text-sm font-bold">
+                              Bin {binNum}
+                            </span>
                             {isTcg && (
                               <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
                                 TCGPlayer
@@ -1045,7 +1166,9 @@ export default function ManaPick() {
                                 {order.label ?? oid.slice(0, 10)}
                               </p>
                               {addr.name && (
-                                <p className="text-sm font-medium mt-1">{addr.name}</p>
+                                <p className="text-sm font-medium mt-1">
+                                  {addr.name}
+                                </p>
                               )}
                               {addr.line1 && (
                                 <p className="text-xs text-muted-foreground">
@@ -1053,9 +1176,13 @@ export default function ManaPick() {
                                   {addr.line2 ? `, ${addr.line2}` : ""}
                                 </p>
                               )}
-                              {(addr.city || addr.state || addr.postal_code) && (
+                              {(addr.city ||
+                                addr.state ||
+                                addr.postal_code) && (
                                 <p className="text-xs text-muted-foreground">
-                                  {[addr.city, addr.state, addr.postal_code].filter(Boolean).join(", ")}
+                                  {[addr.city, addr.state, addr.postal_code]
+                                    .filter(Boolean)
+                                    .join(", ")}
                                 </p>
                               )}
                               {order.shipping_method && (
@@ -1083,12 +1210,15 @@ export default function ManaPick() {
                         );
                         if (orderCards.length === 0) return null;
                         return (
-                          <div className="flex gap-2 overflow-x-auto pb-1">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                             {orderCards.map(([key, entry]) => {
                               const img = entryImageUrl(entry);
                               const qty = entry.allocations[oid] ?? 0;
                               return (
-                                <div key={key} className="relative flex-shrink-0 w-16">
+                                <div
+                                  key={key}
+                                  className="relative flex-shrink-0"
+                                >
                                   {img ? (
                                     <img
                                       src={img}
@@ -1118,7 +1248,10 @@ export default function ManaPick() {
                             placeholder="Tracking number (optional)"
                             value={tracking[oid] ?? ""}
                             onChange={(e) =>
-                              setTracking((prev) => ({ ...prev, [oid]: e.target.value }))
+                              setTracking((prev) => ({
+                                ...prev,
+                                [oid]: e.target.value,
+                              }))
                             }
                             className="h-8 text-xs"
                           />
@@ -1149,7 +1282,9 @@ export default function ManaPick() {
               {orders.filter((o) => !shipped[o.id]).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                   <CheckCircle2 className="h-10 w-10 text-green-500 opacity-80" />
-                  <p className="text-sm font-medium">All orders packed &amp; shipped!</p>
+                  <p className="text-sm font-medium">
+                    All orders packed &amp; shipped!
+                  </p>
                 </div>
               )}
             </div>
@@ -1169,50 +1304,64 @@ export default function ManaPick() {
             </span>
           </div>
 
-          {ebayOrders.filter((o) => !ebayPacked[o.id]).map((order) => (
-            <div key={order.id} className="rounded-lg border bg-card p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-xs font-mono text-muted-foreground">
-                  {order.id.length > 14 ? `${order.id.slice(0, 14)}…` : order.id}
-                  <span className="ml-2 text-muted-foreground/60">
-                    · {order.lineItems.length} item{order.lineItems.length !== 1 ? "s" : ""}
-                  </span>
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 shrink-0"
-                  onClick={() => setEbayPacked((prev) => ({ ...prev, [order.id]: true }))}
-                >
-                  Mark Packed
-                </Button>
-              </div>
+          {ebayOrders
+            .filter((o) => !ebayPacked[o.id])
+            .map((order) => (
+              <div
+                key={order.id}
+                className="rounded-lg border bg-card p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs font-mono text-muted-foreground">
+                    {order.id.length > 14
+                      ? `${order.id.slice(0, 14)}…`
+                      : order.id}
+                    <span className="ml-2 text-muted-foreground/60">
+                      · {order.lineItems.length} item
+                      {order.lineItems.length !== 1 ? "s" : ""}
+                    </span>
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0"
+                    onClick={() =>
+                      setEbayPacked((prev) => ({ ...prev, [order.id]: true }))
+                    }
+                  >
+                    Mark Packed
+                  </Button>
+                </div>
 
-              <div className="space-y-2">
-                {order.lineItems.map((item, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        className="w-16 h-16 object-cover rounded-md border shrink-0"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-md border bg-muted flex items-center justify-center shrink-0">
-                        <Tag className="h-5 w-5 text-muted-foreground opacity-50" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-tight line-clamp-3">{item.title}</p>
-                      {item.quantity > 1 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">×{item.quantity}</p>
+                <div className="space-y-2">
+                  {order.lineItems.map((item, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="w-16 h-16 object-cover rounded-md border shrink-0"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-md border bg-muted flex items-center justify-center shrink-0">
+                          <Tag className="h-5 w-5 text-muted-foreground opacity-50" />
+                        </div>
                       )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight line-clamp-3">
+                          {item.title}
+                        </p>
+                        {item.quantity > 1 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            ×{item.quantity}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
 
           {ebayOrders.every((o) => ebayPacked[o.id]) && (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
@@ -1223,101 +1372,159 @@ export default function ManaPick() {
         </div>
       )}
 
-    {/* ── Deduct from Manapool preview dialog ─────────────────────────── */}
-    <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MinusCircle className="h-5 w-5 text-orange-500" />
-            {deductPreview?.applied ? "Manapool quantities updated" : "Preview: Deduct from Manapool"}
-          </DialogTitle>
-        </DialogHeader>
+      {/* ── Deduct from Manapool preview dialog ─────────────────────────── */}
+      <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MinusCircle className="h-5 w-5 text-orange-500" />
+              {deductPreview?.applied
+                ? "Manapool quantities updated"
+                : "Preview: Deduct from Manapool"}
+            </DialogTitle>
+          </DialogHeader>
 
-        {deductPreview && (
-          <div className="flex-1 overflow-y-auto space-y-4 text-sm">
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "Will update", value: deductPreview.plan.filter(r => r.newQuantity !== r.currentQuantity).length },
-                { label: "No change needed", value: deductPreview.plan.filter(r => r.newQuantity === r.currentQuantity).length },
-                { label: "Not on Manapool", value: deductPreview.notFound.length },
-              ].map(({ label, value }) => (
-                <div key={label} className="rounded-lg border bg-muted/40 p-3 text-center">
-                  <p className="text-xl font-bold tabular-nums">{value}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-                </div>
-              ))}
-            </div>
+          {deductPreview && (
+            <div className="flex-1 overflow-y-auto space-y-4 text-sm">
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: "Will update",
+                    value: deductPreview.plan.filter(
+                      (r) => r.newQuantity !== r.currentQuantity,
+                    ).length,
+                  },
+                  {
+                    label: "No change needed",
+                    value: deductPreview.plan.filter(
+                      (r) => r.newQuantity === r.currentQuantity,
+                    ).length,
+                  },
+                  {
+                    label: "Not on Manapool",
+                    value: deductPreview.notFound.length,
+                  },
+                ].map(({ label, value }) => (
+                  <div
+                    key={label}
+                    className="rounded-lg border bg-muted/40 p-3 text-center"
+                  >
+                    <p className="text-xl font-bold tabular-nums">{value}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {label}
+                    </p>
+                  </div>
+                ))}
+              </div>
 
-            {deductPreview.plan.filter(r => r.newQuantity !== r.currentQuantity).length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Quantity changes
-                </p>
-                <div className="rounded-lg border divide-y">
-                  {deductPreview.plan
-                    .filter(r => r.newQuantity !== r.currentQuantity)
-                    .map((row) => (
-                      <div key={row.tcgplayerSku} className="flex items-center justify-between px-3 py-2 gap-3">
-                        <span className="font-medium truncate flex-1">{row.name}</span>
-                        <div className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
-                          {row.status === "insufficient" && (
-                            <span className="text-amber-600 dark:text-amber-400">(low stock)</span>
-                          )}
-                          <span className="text-muted-foreground">{row.currentQuantity}</span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className={`font-bold ${row.newQuantity === 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>
-                            {row.newQuantity}
+              {deductPreview.plan.filter(
+                (r) => r.newQuantity !== r.currentQuantity,
+              ).length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Quantity changes
+                  </p>
+                  <div className="rounded-lg border divide-y">
+                    {deductPreview.plan
+                      .filter((r) => r.newQuantity !== r.currentQuantity)
+                      .map((row) => (
+                        <div
+                          key={row.tcgplayerSku}
+                          className="flex items-center justify-between px-3 py-2 gap-3"
+                        >
+                          <span className="font-medium truncate flex-1">
+                            {row.name}
                           </span>
+                          <div className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
+                            {row.status === "insufficient" && (
+                              <span className="text-amber-600 dark:text-amber-400">
+                                (low stock)
+                              </span>
+                            )}
+                            <span className="text-muted-foreground">
+                              {row.currentQuantity}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span
+                              className={`font-bold ${row.newQuantity === 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`}
+                            >
+                              {row.newQuantity}
+                            </span>
+                          </div>
                         </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {deductPreview.notFound.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Not found in Manapool inventory
+                  </p>
+                  <div className="rounded-lg border divide-y">
+                    {deductPreview.notFound.map((item) => (
+                      <div
+                        key={item.tcgplayerSku}
+                        className="px-3 py-2 text-xs text-muted-foreground"
+                      >
+                        {item.name}{" "}
+                        <span className="opacity-50">
+                          (SKU {item.tcgplayerSku})
+                        </span>
                       </div>
                     ))}
+                  </div>
                 </div>
-              </div>
-            )}
-
-            {deductPreview.notFound.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Not found in Manapool inventory
-                </p>
-                <div className="rounded-lg border divide-y">
-                  {deductPreview.notFound.map((item) => (
-                    <div key={item.tcgplayerSku} className="px-3 py-2 text-xs text-muted-foreground">
-                      {item.name} <span className="opacity-50">(SKU {item.tcgplayerSku})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {deductPreview.applied && (
-              <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-3 text-green-700 dark:text-green-400 text-sm font-medium">
-                ✓ {deductPreview.updated} listing{deductPreview.updated !== 1 ? "s" : ""} updated on Manapool.
-              </div>
-            )}
-          </div>
-        )}
-
-        <DialogFooter className="gap-2 pt-2">
-          <Button variant="outline" onClick={() => setDeductDialogOpen(false)}>
-            {deductPreview?.applied ? "Done" : "Cancel"}
-          </Button>
-          {!deductPreview?.applied && deductPreview && deductPreview.plan.filter(r => r.newQuantity !== r.currentQuantity).length > 0 && (
-            <Button
-              onClick={handleDeductApply}
-              disabled={deductMutation.isPending}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              {deductMutation.isPending ? (
-                <><Loader2 className="h-4 w-4 animate-spin mr-2" />Updating…</>
-              ) : (
-                <>Apply {deductPreview.plan.filter(r => r.newQuantity !== r.currentQuantity).length} changes</>
               )}
-            </Button>
+
+              {deductPreview.applied && (
+                <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-3 text-green-700 dark:text-green-400 text-sm font-medium">
+                  ✓ {deductPreview.updated} listing
+                  {deductPreview.updated !== 1 ? "s" : ""} updated on Manapool.
+                </div>
+              )}
+            </div>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeductDialogOpen(false)}
+            >
+              {deductPreview?.applied ? "Done" : "Cancel"}
+            </Button>
+            {!deductPreview?.applied &&
+              deductPreview &&
+              deductPreview.plan.filter(
+                (r) => r.newQuantity !== r.currentQuantity,
+              ).length > 0 && (
+                <Button
+                  onClick={handleDeductApply}
+                  disabled={deductMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  {deductMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Updating…
+                    </>
+                  ) : (
+                    <>
+                      Apply{" "}
+                      {
+                        deductPreview.plan.filter(
+                          (r) => r.newQuantity !== r.currentQuantity,
+                        ).length
+                      }{" "}
+                      changes
+                    </>
+                  )}
+                </Button>
+              )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
