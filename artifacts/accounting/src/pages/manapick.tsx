@@ -229,6 +229,18 @@ function CardItem({
 
 type Phase = "pick" | "pack";
 
+const CACHE_KEY = "manapick-cache";
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
 export default function ManaPick() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [master, setMaster] = useState<Master>({});
@@ -239,6 +251,7 @@ export default function ManaPick() {
   const [phase, setPhase] = useState<Phase>("pick");
   const [tracking, setTracking] = useState<Record<string, string>>({});
   const [sessionId, setSessionId] = useState<string>("");
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState({ done: 0, total: 0 });
@@ -260,6 +273,42 @@ export default function ManaPick() {
 
   const sessionIdRef = useRef("");
   const tcgFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Restore from localStorage cache on mount ──────────────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const cached = JSON.parse(raw) as {
+        orders: Order[];
+        master: Master;
+        sets: SetsMap;
+        cachedAt: number;
+      };
+      if (!Array.isArray(cached.orders) || !cached.master) return;
+
+      const binMap: Record<string, number> = {};
+      cached.orders.forEach((o, i) => { binMap[o.id] = i + 1; });
+      const sid = [...cached.orders.map((o) => o.id)].sort().join("|");
+
+      setOrders(cached.orders);
+      setMaster(cached.master);
+      setSets(cached.sets ?? {});
+      setOrderToBin(binMap);
+      setSessionId(sid);
+      sessionIdRef.current = sid;
+      setCachedAt(cached.cachedAt);
+
+      if (sid) {
+        fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`)
+          .then((r) => (r.ok ? r.json() : { picks: {} }))
+          .then(({ picks }) => setPicked(picks ?? {}))
+          .catch(() => {});
+      }
+    } catch {
+      // corrupt cache — ignore
+    }
+  }, []);
 
   // ── Fetch Manapool orders (and background-sync accounting) ────────────────
 
@@ -360,14 +409,25 @@ export default function ManaPick() {
         });
       }
 
-      setMaster((prev) => {
-        const next = { ...prev };
-        for (const [key, card] of Object.entries(allResults)) {
-          if (next[key]) next[key] = { ...next[key]!, scryfall: card };
-        }
-        return next;
-      });
+      const enrichedMaster = { ...rawMaster };
+      for (const [key, card] of Object.entries(allResults)) {
+        if (enrichedMaster[key]) enrichedMaster[key] = { ...enrichedMaster[key]!, scryfall: card };
+      }
+      setMaster(enrichedMaster);
       setEnrichProgress({ done: 0, total: 0 });
+
+      try {
+        const ts = Date.now();
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          orders: rawOrders,
+          master: enrichedMaster,
+          sets: rawSets,
+          cachedAt: ts,
+        }));
+        setCachedAt(ts);
+      } catch {
+        // quota exceeded or unavailable — ignore
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
@@ -704,6 +764,11 @@ export default function ManaPick() {
               {loading ? "Fetching…" : isEmpty ? "Fetch Manapool" : "Refresh Manapool"}
             </span>
           </Button>
+          {cachedAt !== null && !loading && (
+            <span className="text-xs text-muted-foreground">
+              Synced {formatRelativeTime(cachedAt)}
+            </span>
+          )}
 
           {/* TCGPlayer pull sheet upload */}
           <input
@@ -786,6 +851,8 @@ export default function ManaPick() {
                 setShipped({});
                 setOrderToBin({});
                 setTcgError(null);
+                setCachedAt(null);
+                localStorage.removeItem(CACHE_KEY);
               }}
             >
               Clear All
