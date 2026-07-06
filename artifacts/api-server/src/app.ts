@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -27,12 +27,23 @@ app.use(
     },
   }),
 );
-app.use(cors({ credentials: true, origin: true }));
+const ALLOWED_ORIGINS = process.env["CORS_ORIGINS"]?.split(",") ?? ["http://localhost:5173", "http://localhost:8080"];
+app.use(cors({
+  credentials: true,
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
+    else cb(null, false);
+  },
+}));
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(authMiddleware);
 
 app.use("/api", router);
+
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error({ err, path: _req.path }, "Unhandled error");
+  res.status(500).json({ error: "Internal server error" });
+});
 
 export default app;

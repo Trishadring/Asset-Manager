@@ -22,6 +22,106 @@ function getCredentials() {
   return { email, token };
 }
 
+const PLACEHOLDER_CARDS: Record<string, { number: string; scryfall_id: string }> = {
+  "Sol Ring":         { number: "410", scryfall_id: "46ca0b66-a000-4483-b916-f5b89e710244" },
+  "Arcane Signet":    { number: "367", scryfall_id: "0539b83c-4459-41b5-a001-d15a1c9ddf23" },
+  "Command Tower":    { number: "420", scryfall_id: "14019383-0327-404b-ab4d-c65c3fa8c50d" },
+  "Lightning Greaves": { number: "398", scryfall_id: "331013f6-976a-4dac-9939-1006e474e108" },
+  "Swords to Plowshares": { number: "841", scryfall_id: "42ecba4b-9624-428f-a8af-dd88139ab13c" },
+  "Path to Exile":    { number: "49",  scryfall_id: "4970389b-08f4-4a15-a128-954b072a8137" },
+  "Counterspell":     { number: "81",  scryfall_id: "8493131c-0a7b-4be6-a8a2-0b425f4f67fb" },
+};
+
+function getPlaceholderOrders() {
+  const card = (name: string) => {
+    const c = PLACEHOLDER_CARDS[name]!;
+    return { name, set: "cmm", number: c.number, finish_id: "NF", scryfall_id: c.scryfall_id };
+  };
+
+  const orders = [
+    {
+      id: "dev-order-001",
+      label: "Alice Johnson",
+      shipping_address: {
+        name: "Alice Johnson",
+        line1: "123 Magic Ln",
+        city: "Seattle",
+        state: "WA",
+        postal_code: "98101",
+        country: "US",
+      },
+      shipping_method: "USPS Ground",
+      items: [
+        { quantity: 3, product: { single: card("Sol Ring") } },
+        { quantity: 2, product: { single: card("Arcane Signet") } },
+        { quantity: 1, product: { single: card("Command Tower") } },
+      ],
+    },
+    {
+      id: "dev-order-002",
+      label: "Bob Smith",
+      shipping_address: {
+        name: "Bob Smith",
+        line1: "456 Card Ct",
+        city: "Portland",
+        state: "OR",
+        postal_code: "97201",
+        country: "US",
+      },
+      shipping_method: "USPS Priority",
+      items: [
+        { quantity: 1, product: { single: card("Sol Ring") } },
+        { quantity: 2, product: { single: card("Lightning Greaves") } },
+        { quantity: 1, product: { single: card("Swords to Plowshares") } },
+      ],
+    },
+    {
+      id: "dev-order-003",
+      label: "Carol Davis",
+      shipping_address: {
+        name: "Carol Davis",
+        line1: "789 TCG Ave",
+        city: "Denver",
+        state: "CO",
+        postal_code: "80201",
+        country: "US",
+      },
+      shipping_method: "USPS Ground",
+      items: [
+        { quantity: 4, product: { single: card("Path to Exile") } },
+        { quantity: 2, product: { single: card("Counterspell") } },
+      ],
+    },
+  ];
+
+  const master: Record<string, unknown> = {};
+  for (const order of orders) {
+    const oid = String(order.id);
+    for (const item of order.items) {
+      const single = item.product.single as Record<string, string>;
+      const name = single.name!.trim();
+      const set = (single.set ?? "").trim().toLowerCase();
+      const collector_number = (single.number ?? "").trim();
+      const finish = FINISH_LABELS[single.finish_id ?? ""] ?? "nonfoil";
+      const scryfall_id = single.scryfall_id;
+      const qty = item.quantity ?? 1;
+      const key = `${name}|${set}|${collector_number}|${finish}`;
+      if (!master[key]) {
+        master[key] = { name, set, collector_number, finish, scryfall_id, quantity: 0, allocations: {} };
+      }
+      (master[key] as Record<string, unknown>).quantity = (master[key] as Record<string, number>).quantity + qty;
+      const alloc = (master[key] as Record<string, Record<string, number>>).allocations;
+      alloc[oid] = (alloc[oid] ?? 0) + qty;
+    }
+  }
+
+  const sets: Record<string, { name: string; released_at: string }> = {
+    cmm: { name: "Commander Masters", released_at: "2023-08-04" },
+  };
+
+  return { orders, master, sets };
+}
+
 function mpHeaders(email: string, token: string) {
   return {
     Accept: "application/json",
@@ -37,6 +137,11 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
   try {
     ({ email, token } = getCredentials());
   } catch (err) {
+    if (process.env["NODE_ENV"] !== "production") {
+      req.log.info("no manapool credentials; returning placeholder orders");
+      res.json(getPlaceholderOrders());
+      return;
+    }
     res.status(500).json({ error: String(err) });
     return;
   }
@@ -50,10 +155,20 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
         { headers: mpHeaders(email, token) },
       );
       if (resp.status === 401) {
+        if (process.env["NODE_ENV"] !== "production") {
+          req.log.warn("manapool auth failed; returning placeholder orders");
+          res.json(getPlaceholderOrders());
+          return;
+        }
         res.status(500).json({ error: "Manapool authentication failed. Check your credentials." });
         return;
       }
       if (!resp.ok) {
+        if (process.env["NODE_ENV"] !== "production") {
+          req.log.warn({ status: resp.status }, "manapool error; returning placeholder orders");
+          res.json(getPlaceholderOrders());
+          return;
+        }
         res.status(500).json({ error: `Manapool error: ${resp.status}` });
         return;
       }

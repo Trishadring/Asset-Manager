@@ -11,7 +11,5 @@
     "lib": ["esnext", "dom", "dom.iterable"]
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../lib/api-client-react" }
-  ]
+  "references": []
 }

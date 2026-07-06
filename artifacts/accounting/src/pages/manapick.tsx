@@ -323,11 +323,17 @@ export default function ManaPick() {
         fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`)
           .then((r) => (r.ok ? r.json() : { picks: {} }))
           .then(({ picks }) => setPicked(picks ?? {}))
-          .catch(() => {});
+          .catch(() => console.warn("failed to load picks"));
       }
     } catch {
       // corrupt cache — ignore
     }
+  }, []);
+
+  // Auto-fetch orders on mount (placeholder or real data)
+  useEffect(() => {
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Fetch Manapool orders (and background-sync accounting) ────────────────
@@ -341,7 +347,7 @@ export default function ManaPick() {
       // Fetch orders + kick off background Manapool accounting sync
       const [ordersRes] = await Promise.all([
         fetch("/api/manapick/orders"),
-        fetch("/api/manapool/sync", { method: "POST" }).catch(() => {}),
+        fetch("/api/manapool/sync", { method: "POST" }).catch(() => console.warn("manapool sync failed")),
       ]);
 
       if (!ordersRes.ok) {
@@ -693,7 +699,7 @@ export default function ManaPick() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session: sid, pickKey: pk, picked: newVal }),
-        }).catch(() => {});
+        }).catch(() => console.warn("failed to save pick"));
       }
       return { ...prev, [pk]: newVal };
     });

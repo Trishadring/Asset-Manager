@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, sql } from "drizzle-orm";
+import { desc, sql, max } from "drizzle-orm";
 import { db, manapoolOrdersTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 
@@ -90,13 +90,19 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
 
   const headers = manapoolHeaders(email, token);
 
-  let pageOrders: Record<string, unknown>[] = [];
+  const [latestRow] = await db
+    .select({ latestDate: max(manapoolOrdersTable.date) })
+    .from(manapoolOrdersTable);
+  const latestSyncedDate = latestRow?.latestDate
+    ? new Date(latestRow.latestDate)
+    : null;
+
+  let newOrders: Record<string, unknown>[] = [];
   let offset = 0;
   const limit = 100;
-  const allOrders: Record<string, unknown>[] = [];
 
   try {
-    while (true) {
+    pagination: while (true) {
       const resp = await fetch(
         `${MANAPOOL_BASE}/seller/orders?limit=${limit}&offset=${offset}`,
         { headers },
@@ -106,8 +112,20 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
         return;
       }
       const body = (await resp.json()) as { orders?: Record<string, unknown>[] };
-      pageOrders = body.orders ?? [];
-      allOrders.push(...pageOrders);
+      const pageOrders = body.orders ?? [];
+
+      if (pageOrders.length === 0) break;
+
+      // Manapool returns newest orders first; stop once we hit already-synced dates
+      if (latestSyncedDate) {
+        const allOld = pageOrders.every((o) => {
+          const d = o.created_at ? new Date(String(o.created_at)) : null;
+          return d && d <= latestSyncedDate!;
+        });
+        if (allOld) break pagination;
+      }
+
+      newOrders.push(...pageOrders);
       if (pageOrders.length < limit) break;
       offset += limit;
       if (offset > 5000) break;
@@ -118,61 +136,60 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     return;
   }
 
-  let loggedDetail = false;
   let upserted = 0;
+  const CONCURRENCY = 5;
 
-  for (const o of allOrders) {
-    const id = String(o.id ?? "");
-    if (!id) continue;
+  for (let i = 0; i < newOrders.length; i += CONCURRENCY) {
+    const batch = newOrders.slice(i, i + CONCURRENCY);
+    const details = await Promise.allSettled(
+      batch.map((o) => fetchOrderDetail(String(o.id ?? ""), email, token)),
+    );
 
-    const gross = centsToAmount(o.total_cents);
-    const date = o.created_at ? new Date(String(o.created_at)) : new Date();
+    for (let j = 0; j < batch.length; j++) {
+      const o = batch[j]!;
+      const id = String(o.id ?? "");
+      if (!id) continue;
 
-    const detail = await fetchOrderDetail(id, email, token);
+      const gross = centsToAmount(o.total_cents);
+      const date = o.created_at ? new Date(String(o.created_at)) : new Date();
+      const detail = details[j]!.status === "fulfilled" ? details[j]!.value : null;
 
-    if (!loggedDetail && detail) {
-      req.log.info(
-        { detailKeys: Object.keys(detail), detail },
-        "Manapool first order detail structure",
-      );
-      loggedDetail = true;
-    }
+      const payment = detail
+        ? (detail.payment as Record<string, unknown> | undefined)
+        : undefined;
+      const shipping = payment ? centsToAmount(payment.shipping_cents) : null;
+      const fees = payment ? centsToAmount(payment.fee_cents) : null;
+      const net = payment ? centsToAmount(payment.net_cents) : null;
 
-    const payment = detail
-      ? (detail.payment as Record<string, unknown> | undefined)
-      : undefined;
-    const shipping = payment ? centsToAmount(payment.shipping_cents) : null;
-    const fees = payment ? centsToAmount(payment.fee_cents) : null;
-    const net = payment ? centsToAmount(payment.net_cents) : null;
-
-    await db
-      .insert(manapoolOrdersTable)
-      .values({
-        id,
-        date,
-        grossTotal: gross,
-        shippingTotal: shipping ?? 0,
-        platformFees: fees ?? 0,
-        netPayout: net ?? 0,
-      })
-      .onConflictDoUpdate({
-        target: manapoolOrdersTable.id,
-        set: {
+      await db
+        .insert(manapoolOrdersTable)
+        .values({
+          id,
           date,
           grossTotal: gross,
-          shippingTotal: shipping !== null ? shipping : sql`${manapoolOrdersTable.shippingTotal}`,
-          platformFees: fees !== null ? fees : sql`${manapoolOrdersTable.platformFees}`,
-          netPayout: net !== null ? net : sql`${manapoolOrdersTable.netPayout}`,
-        },
-      });
-    upserted++;
+          shippingTotal: shipping ?? 0,
+          platformFees: fees ?? 0,
+          netPayout: net ?? 0,
+        })
+        .onConflictDoUpdate({
+          target: manapoolOrdersTable.id,
+          set: {
+            date,
+            grossTotal: gross,
+            shippingTotal: shipping !== null ? shipping : sql`${manapoolOrdersTable.shippingTotal}`,
+            platformFees: fees !== null ? fees : sql`${manapoolOrdersTable.platformFees}`,
+            netPayout: net !== null ? net : sql`${manapoolOrdersTable.netPayout}`,
+          },
+        });
+      upserted++;
+    }
   }
 
-  req.log.info({ upserted, total: allOrders.length }, "Manapool sync complete");
+  req.log.info({ upserted, total: newOrders.length }, "Manapool sync complete");
   res.json({
-    message: `Synced ${allOrders.length} orders (${upserted} updated).`,
+    message: `Synced ${newOrders.length} orders (${upserted} updated).`,
     upserted,
-    total: allOrders.length,
+    total: newOrders.length,
   });
 });
 

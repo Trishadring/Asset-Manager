@@ -65,7 +65,7 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Dashboard} />
+        <Route path="/" component={ManaPick} />
         <Route path="/purchases" component={Purchases} />
         <Route path="/orders" component={Orders} />
         <Route path="/sales" component={Sales} />
