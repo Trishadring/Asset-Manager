@@ -1009,6 +1009,42 @@ export default function ManaPick() {
                         </span>
                       </div>
 
+                      {/* Card images for this order */}
+                      {(() => {
+                        const orderCards = Object.entries(master).filter(
+                          ([, e]) => (e.allocations[oid] ?? 0) > 0,
+                        );
+                        if (orderCards.length === 0) return null;
+                        return (
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {orderCards.map(([key, entry]) => {
+                              const img = entryImageUrl(entry);
+                              const qty = entry.allocations[oid] ?? 0;
+                              return (
+                                <div key={key} className="relative flex-shrink-0 w-16">
+                                  {img ? (
+                                    <img
+                                      src={img}
+                                      alt={entry.name}
+                                      className="w-full rounded-lg block"
+                                    />
+                                  ) : (
+                                    <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight">
+                                      {entry.name}
+                                    </div>
+                                  )}
+                                  {qty > 1 && (
+                                    <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-bold rounded px-1 leading-tight">
+                                      ×{qty}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
                       {!isTcg && (
                         <div className="flex gap-2">
                           <Input
