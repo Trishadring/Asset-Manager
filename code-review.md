@@ -215,22 +215,16 @@ The route file becomes a thin HTTP wrapper around the lib. The cached tokens liv
 
 ---
 
-### AS-008: Remove banner shim from `build.mjs`
+### AS-008: Trim banner shim in `build.mjs` - done
 
-**File:** `artifacts/api-server/build.mjs` (lines 35–44)
+**File:** `artifacts/api-server/build.mjs`
 
-**Problem:** The esbuild banner injects polyfills for `require`, `__filename`, and `__dirname` into the ESM output:
-```js
-globalThis.require = __bannerCrReq(import.meta.url);
-globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
-globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
-```
-This was required for Express 4 (CJS-only), but this project uses Express 5 which has native ESM support. No dependency in the project uses `__filename` or `__dirname` at runtime. The `require` polyfill is only needed if a dependency calls `require()` dynamically, which none of the bundled dependencies do.
+**Problem:** The esbuild banner injected polyfills for `require`, `__filename`, and `__dirname` into the ESM output. `__filename`/`__dirname` were unused by any dependency; `require` was assumed unnecessary with Express 5.
 
-**Suggested approach:** Remove the banner entirely. Build and run the server in development to verify no breakage. If a dependency does require the shim, add it back with a comment explaining which package needs it.
+**Result:** Removed `__filename`/`__dirname` polyfills (zero consumers). Kept `globalThis.require` polyfill because Express 5 internally calls `require("node:events")` even when bundled as ESM. Banner reduced from 6 lines to 1 inline import.
 
 **Acceptance criteria:**
-- Banner removed
+- `__filename`/`__dirname` polyfills removed
 - Server starts and responds to requests
 - No runtime `require is not defined` errors
 
@@ -310,7 +304,7 @@ Non-owner access is denied at the route level rather than relying on UI hiding.
 
 ---
 
-### AS-014: Address stale references in `threat_model.md`
+### AS-014: Address stale references in `threat_model.md`- done
 
 **File:** `threat_model.md`
 
