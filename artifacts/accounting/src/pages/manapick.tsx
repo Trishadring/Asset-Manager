@@ -1,21 +1,11 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import {
   Loader2,
   RefreshCw,
   Package,
   ShoppingBag,
-  CheckCircle2,
   Upload,
   X,
   MinusCircle,
@@ -23,239 +13,21 @@ import {
 } from "lucide-react";
 import {
   useDeductFromManapool,
-  type DeductionResult,
   type TcgPullCard,
+  type DeductionResult,
 } from "@/hooks/use-tcgplayer";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-interface ScryfallCard {
-  id: string;
-  name: string;
-  colors?: string[];
-  type_line?: string;
-  set: string;
-  collector_number: string;
-  image_uris?: { normal?: string; large?: string; small?: string };
-  card_faces?: Array<{
-    image_uris?: { normal?: string; large?: string; small?: string };
-  }>;
-}
-
-interface MasterEntry {
-  name: string;
-  set: string;
-  collector_number: string;
-  finish: "nonfoil" | "foil" | "etched" | string;
-  quantity: number;
-  scryfall_id?: string;
-  allocations: Record<string, number>;
-  scryfall?: ScryfallCard;
-  source?: "manapool" | "tcgplayer";
-}
-
-interface ShippingAddress {
-  name?: string;
-  line1?: string;
-  line2?: string;
-  line3?: string;
-  city?: string;
-  state?: string;
-  postal_code?: string;
-  country?: string;
-}
-
-interface OrderItem {
-  quantity?: number;
-  product?: {
-    single?: {
-      name?: string;
-      set?: string;
-      number?: string;
-      finish_id?: string;
-      scryfall_id?: string;
-    };
-  };
-}
-
-interface Order {
-  id: string;
-  label?: string;
-  shipping_address?: ShippingAddress;
-  shipping_method?: string;
-  items?: OrderItem[];
-  source?: "manapool" | "tcgplayer";
-}
-
-type Master = Record<string, MasterEntry>;
-type SetsMap = Record<string, { name: string; released_at: string }>;
-
-interface EbayPickLineItem {
-  title: string;
-  imageUrl: string | null;
-  quantity: number;
-}
-
-interface EbayPickOrder {
-  id: string;
-  lineItems: EbayPickLineItem[];
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function scryfallDirectUrl(scryfallId?: string): string | null {
-  if (!scryfallId || scryfallId.length < 2) return null;
-  return `https://cards.scryfall.io/normal/front/${scryfallId[0]}/${scryfallId[1]}/${scryfallId}.jpg`;
-}
-
-function cardImageFromData(card?: ScryfallCard): string | null {
-  if (!card) return null;
-  if (card.image_uris)
-    return (
-      card.image_uris.normal ??
-      card.image_uris.large ??
-      card.image_uris.small ??
-      null
-    );
-  const face = card.card_faces?.[0];
-  if (face?.image_uris)
-    return (
-      face.image_uris.normal ??
-      face.image_uris.large ??
-      face.image_uris.small ??
-      null
-    );
-  return null;
-}
-
-function entryImageUrl(entry: MasterEntry): string | null {
-  return (
-    cardImageFromData(entry.scryfall) ?? scryfallDirectUrl(entry.scryfall_id)
-  );
-}
-
-function colorSortIndex(card?: ScryfallCard): number {
-  if (!card) return 9;
-  if (card.type_line?.includes("Land")) return 8;
-  const c = card.colors ?? [];
-  if (c.length === 0) return 7;
-  if (c.length > 1) return 6;
-  return (
-    ({ W: 1, U: 2, B: 3, R: 4, G: 5 } as Record<string, number>)[c[0]!] ?? 9
-  );
-}
-
-function parseCollectorNumber(cn: string): [number, string] {
-  const m = String(cn).match(/(\d+)/);
-  return m ? [parseInt(m[1]!), cn] : [0, cn];
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function CardItem({
-  cardKey,
-  entry,
-  orderToBin,
-  picked,
-  onToggle,
-}: {
-  cardKey: string;
-  entry: MasterEntry;
-  orderToBin: Record<string, number>;
-  picked: Record<string, boolean>;
-  onToggle: (pk: string) => void;
-}) {
-  const img = entryImageUrl(entry);
-  const allPicked = Object.keys(entry.allocations).every(
-    (oid) => picked[`${cardKey}|${oid}`],
-  );
-  const isFormatted = entry.finish === "foil" || entry.finish === "etched";
-
-  return (
-    <div
-      className={`flex flex-col gap-1 transition-opacity duration-200 ${allPicked ? "opacity-30" : ""}`}
-    >
-      <div
-        className={
-          isFormatted
-            ? "p-0.5 rounded-xl bg-gradient-to-br from-yellow-300 via-pink-400 via-cyan-300 to-green-300"
-            : ""
-        }
-      >
-        {img ? (
-          <img src={img} alt={entry.name} className="w-full rounded-xl block" />
-        ) : (
-          <div className="w-full aspect-[63/88] rounded-xl bg-muted flex items-center justify-center text-xs text-muted-foreground px-2 text-center">
-            {entry.name}
-          </div>
-        )}
-      </div>
-
-      <div className="text-xs leading-tight mt-0.5">
-        <p
-          className={`font-semibold truncate ${allPicked ? "line-through text-muted-foreground" : ""}`}
-        >
-          {entry.name}
-        </p>
-        <p className="text-muted-foreground">
-          {entry.set.toUpperCase()} #{entry.collector_number}
-          {entry.finish === "foil"
-            ? " ✨"
-            : entry.finish === "etched"
-              ? " 🔮"
-              : ""}
-          {entry.source === "tcgplayer" && (
-            <span className="ml-1 text-blue-500 font-medium">TCG</span>
-          )}
-        </p>
-      </div>
-
-      {Object.entries(entry.allocations).map(([oid, qty]) => {
-        const binNum = orderToBin[oid] ?? "?";
-        const pk = `${cardKey}|${oid}`;
-        const isPicked = picked[pk];
-        return (
-          <Button
-            key={pk}
-            size="sm"
-            variant={isPicked ? "secondary" : "default"}
-            className={`w-full text-xs h-7 ${isPicked ? "line-through text-muted-foreground" : ""}`}
-            onClick={() => onToggle(pk)}
-          >
-            {isPicked ? "✓" : "○"} Bin {binNum} ×{qty}
-          </Button>
-        );
-      })}
-    </div>
-  );
-}
+import type { Order, Master, SetsMap, EbayPickOrder, ScryfallCard, MasterEntry } from "./manapick/types";
+import { colorSortIndex, parseCollectorNumber, formatRelativeTime } from "./manapick/types";
+import { PickView, type SetGroup } from "./manapick/PickView";
+import { PackView } from "./manapick/PackView";
+import { EbaySection } from "./manapick/EbaySection";
+import { DeductDialog } from "./manapick/DeductDialog";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 type Phase = "pick" | "pack";
 
 const CACHE_KEY = "manapick-cache";
-
-function formatRelativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 export default function ManaPick() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -330,13 +102,13 @@ export default function ManaPick() {
     }
   }, []);
 
-  // Auto-fetch orders on mount (placeholder or real data)
+  // Auto-fetch orders on mount
   useEffect(() => {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Fetch Manapool orders (and background-sync accounting) ────────────────
+  // ── Fetch Manapool orders ────────────────────────────────────────────────
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -344,7 +116,6 @@ export default function ManaPick() {
     setEnrichProgress({ done: 0, total: 0 });
 
     try {
-      // Fetch orders + kick off background Manapool accounting sync
       const [ordersRes] = await Promise.all([
         fetch("/api/manapick/orders"),
         fetch("/api/manapool/sync", { method: "POST" }).catch(() => console.warn("manapool sync failed")),
@@ -525,7 +296,6 @@ export default function ManaPick() {
         setMaster((prev) => {
           const next = { ...prev };
           for (const card of cards) {
-            // Key: prefer resolved Scryfall set code; fall back to TCGPlayer set name slug
             const setSlug =
               card.setCode ||
               card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
@@ -546,7 +316,6 @@ export default function ManaPick() {
               (next[key].allocations[TCG_ORDER_ID] ?? 0) + card.orderQuantity;
           }
 
-          // Update sessionId to include TCGPlayer order
           const newSid = [
             ...(Object.keys(next).length > 0
               ? [
@@ -565,9 +334,7 @@ export default function ManaPick() {
           return next;
         });
 
-        // Enrich TCGPlayer cards via Scryfall.
-        // When a set code was resolved, use set+collector_number for exact printing lookup.
-        // Otherwise fall back to cleaned card name.
+        // Enrich TCGPlayer cards via Scryfall
         const tcgIdentifiers = cards.map((c) => ({
           key: `${c.name}|tcg:${c.setName}|${c.collectorNumber}|${c.finish}`,
           name: c.scryfallName,
@@ -576,7 +343,6 @@ export default function ManaPick() {
           scryfall_id: undefined,
         }));
 
-        // Add set info for sorting — use resolved code when available
         setSets((prev) => {
           const next = { ...prev };
           for (const c of cards) {
@@ -683,7 +449,6 @@ export default function ManaPick() {
       {
         onSuccess: (result) => {
           setDeductPreview(result);
-          // Keep dialog open showing the result
         },
         onError: (err) => setTcgError(`Deduct failed: ${err.message}`),
       },
@@ -705,7 +470,7 @@ export default function ManaPick() {
     });
   }, []);
 
-  // ── Cross-device sync: poll server picks every 5s during pick phase ────────
+  // ── Cross-device sync ─────────────────────────────────────────────────────
 
   useEffect(() => {
     const sid = sessionId;
@@ -744,7 +509,7 @@ export default function ManaPick() {
 
   // ── Sorted set groups ─────────────────────────────────────────────────────
 
-  const setGroups = useMemo(() => {
+  const setGroups: SetGroup[] = useMemo(() => {
     const bySet: Record<string, Array<[string, MasterEntry]>> = {};
     for (const [key, entry] of Object.entries(master)) {
       const setKey = entry.set;
@@ -774,7 +539,7 @@ export default function ManaPick() {
   const isEnriching = enrichProgress.total > 0;
   const hasTcg = orders.some((o) => o.id === "tcgplayer-pullsheet");
 
-  // ── Pack view ─────────────────────────────────────────────────────────────
+  // ── Pack view actions ─────────────────────────────────────────────────────
 
   async function shipOrder(oid: string) {
     if (oid === "tcgplayer-pullsheet") {
@@ -799,6 +564,10 @@ export default function ManaPick() {
     }
   }
 
+  const handleTrackingChange = useCallback((oid: string, value: string) => {
+    setTracking((prev) => ({ ...prev, [oid]: value }));
+  }, []);
+
   // ── Fetch eBay pick orders ─────────────────────────────────────────────────
 
   const fetchEbayOrders = useCallback(async () => {
@@ -810,8 +579,8 @@ export default function ManaPick() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      const { orders } = (await res.json()) as { orders: EbayPickOrder[] };
-      setEbayOrders(orders);
+      const { orders: fetchedOrders } = (await res.json()) as { orders: EbayPickOrder[] };
+      setEbayOrders(fetchedOrders);
       setEbayPacked({});
     } catch (err) {
       setEbayError(err instanceof Error ? err.message : String(err));
@@ -883,32 +652,31 @@ export default function ManaPick() {
           </Button>
 
           {hasTcg && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDeductPreview}
-              disabled={deductMutation.isPending}
-              className="text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
-            >
-              {deductMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MinusCircle className="h-4 w-4" />
-              )}
-              <span className="ml-1">Deduct from Manapool</span>
-            </Button>
-          )}
-
-          {hasTcg && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={removeTcgCards}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <X className="h-4 w-4" />
-              <span className="ml-1">Remove TCG</span>
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDeductPreview}
+                disabled={deductMutation.isPending}
+                className="text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
+              >
+                {deductMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MinusCircle className="h-4 w-4" />
+                )}
+                <span className="ml-1">Deduct from Manapool</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={removeTcgCards}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-4 w-4" />
+                <span className="ml-1">Remove TCG</span>
+              </Button>
+            </>
           )}
 
           <Button
@@ -1065,472 +833,46 @@ export default function ManaPick() {
             </Button>
           </div>
 
-          <Separator />
-
           {/* ── PICK VIEW ────────────────────────────────────────────────── */}
           {phase === "pick" && (
-            <div className="space-y-8">
-              {setGroups.map(({ setCode, setInfo, cards }) => (
-                <div key={setCode}>
-                  <div className="mb-3">
-                    <h2 className="text-lg font-bold">
-                      {setInfo?.name ?? setCode.toUpperCase()}
-                    </h2>
-                    {setInfo?.name && (
-                      <p className="text-xs text-muted-foreground">
-                        {setCode.toUpperCase()}
-                      </p>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                    {cards.map(([key, entry]) => (
-                      <CardItem
-                        key={key}
-                        cardKey={key}
-                        entry={entry}
-                        orderToBin={orderToBin}
-                        picked={picked}
-                        onToggle={togglePick}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PickView
+              setGroups={setGroups}
+              orderToBin={orderToBin}
+              picked={picked}
+              onToggle={togglePick}
+            />
           )}
 
           {/* ── PACK VIEW ─────────────────────────────────────────────────── */}
           {phase === "pack" && (
-            <div className="space-y-4">
-              {/* Bin reference */}
-              <div className="rounded-lg border p-3 text-sm space-y-1">
-                <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                  Bin Reference
-                </p>
-                {orders.map((o) => (
-                  <div key={o.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-bold text-foreground">
-                      Bin {orderToBin[o.id]}
-                    </span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="font-mono text-muted-foreground">
-                      {o.label ?? o.id.slice(0, 8)}
-                    </span>
-                    {o.shipping_address?.name && (
-                      <span className="text-muted-foreground">
-                        — {o.shipping_address.name}
-                      </span>
-                    )}
-                    {o.source === "tcgplayer" && (
-                      <span className="text-blue-500 font-medium">
-                        TCGPlayer
-                      </span>
-                    )}
-                    {shipped[o.id] && (
-                      <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Order cards */}
-              {orders
-                .filter((o) => !shipped[o.id])
-                .map((order) => {
-                  const oid = order.id;
-                  const binNum = orderToBin[oid];
-                  const addr = order.shipping_address ?? {};
-                  const isTcg = order.source === "tcgplayer";
-                  const cardCount = isTcg
-                    ? Object.values(master)
-                        .filter((e) => e.source === "tcgplayer")
-                        .reduce((s, e) => s + (e.allocations[oid] ?? 0), 0)
-                    : (order.items ?? [])
-                        .filter((i) => i.product?.single)
-                        .reduce((s, i) => s + (i.quantity ?? 1), 0);
-
-                  return (
-                    <div
-                      key={oid}
-                      className="rounded-lg border bg-card p-4 space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">
-                              Bin {binNum}
-                            </span>
-                            {isTcg && (
-                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
-                                TCGPlayer
-                              </span>
-                            )}
-                          </div>
-                          {!isTcg && (
-                            <>
-                              <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                                {order.label ?? oid.slice(0, 10)}
-                              </p>
-                              {addr.name && (
-                                <p className="text-sm font-medium mt-1">
-                                  {addr.name}
-                                </p>
-                              )}
-                              {addr.line1 && (
-                                <p className="text-xs text-muted-foreground">
-                                  {addr.line1}
-                                  {addr.line2 ? `, ${addr.line2}` : ""}
-                                </p>
-                              )}
-                              {(addr.city ||
-                                addr.state ||
-                                addr.postal_code) && (
-                                <p className="text-xs text-muted-foreground">
-                                  {[addr.city, addr.state, addr.postal_code]
-                                    .filter(Boolean)
-                                    .join(", ")}
-                                </p>
-                              )}
-                              {order.shipping_method && (
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  via {order.shipping_method}
-                                </p>
-                              )}
-                            </>
-                          )}
-                          {isTcg && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Ship via your normal TCGPlayer process
-                            </p>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                          {cardCount} card{cardCount !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-
-                      {/* Card images for this order */}
-                      {(() => {
-                        const orderCards = Object.entries(master).filter(
-                          ([, e]) => (e.allocations[oid] ?? 0) > 0,
-                        );
-                        if (orderCards.length === 0) return null;
-                        return (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                            {orderCards.map(([key, entry]) => {
-                              const img = entryImageUrl(entry);
-                              const qty = entry.allocations[oid] ?? 0;
-                              return (
-                                <div
-                                  key={key}
-                                  className="relative flex-shrink-0"
-                                >
-                                  {img ? (
-                                    <img
-                                      src={img}
-                                      alt={entry.name}
-                                      className="w-full rounded-lg block"
-                                    />
-                                  ) : (
-                                    <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight">
-                                      {entry.name}
-                                    </div>
-                                  )}
-                                  {qty > 1 && (
-                                    <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-bold rounded px-1 leading-tight">
-                                      ×{qty}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-
-                      {!isTcg && (
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Tracking number (optional)"
-                            value={tracking[oid] ?? ""}
-                            onChange={(e) =>
-                              setTracking((prev) => ({
-                                ...prev,
-                                [oid]: e.target.value,
-                              }))
-                            }
-                            className="h-8 text-xs"
-                          />
-                          <Button
-                            size="sm"
-                            className="h-8 shrink-0"
-                            onClick={() => shipOrder(oid)}
-                          >
-                            Mark Shipped
-                          </Button>
-                        </div>
-                      )}
-
-                      {isTcg && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8"
-                          onClick={() => shipOrder(oid)}
-                        >
-                          Mark Packed
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-
-              {orders.filter((o) => !shipped[o.id]).length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
-                  <CheckCircle2 className="h-10 w-10 text-green-500 opacity-80" />
-                  <p className="text-sm font-medium">
-                    All orders packed &amp; shipped!
-                  </p>
-                </div>
-              )}
-            </div>
+            <PackView
+              orders={orders}
+              master={master}
+              orderToBin={orderToBin}
+              shipped={shipped}
+              tracking={tracking}
+              onShip={shipOrder}
+              onTrackingChange={handleTrackingChange}
+            />
           )}
         </>
       )}
 
       {/* ── eBay Orders ──────────────────────────────────────────────────── */}
-      {ebayOrders.length > 0 && (
-        <div className="space-y-4">
-          <Separator />
-          <div className="flex items-center gap-2">
-            <Tag className="h-4 w-4 text-purple-500" />
-            <h2 className="text-lg font-bold">eBay Orders</h2>
-            <span className="text-sm text-muted-foreground">
-              ({ebayOrders.filter((o) => !ebayPacked[o.id]).length} pending)
-            </span>
-          </div>
-
-          {ebayOrders
-            .filter((o) => !ebayPacked[o.id])
-            .map((order) => (
-              <div
-                key={order.id}
-                className="rounded-lg border bg-card p-4 space-y-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-xs font-mono text-muted-foreground">
-                    {order.id.length > 14
-                      ? `${order.id.slice(0, 14)}…`
-                      : order.id}
-                    <span className="ml-2 text-muted-foreground/60">
-                      · {order.lineItems.length} item
-                      {order.lineItems.length !== 1 ? "s" : ""}
-                    </span>
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 shrink-0"
-                    onClick={() =>
-                      setEbayPacked((prev) => ({ ...prev, [order.id]: true }))
-                    }
-                  >
-                    Mark Packed
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  {order.lineItems.map((item, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.title}
-                          className="w-16 h-16 object-cover rounded-md border shrink-0"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-md border bg-muted flex items-center justify-center shrink-0">
-                          <Tag className="h-5 w-5 text-muted-foreground opacity-50" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-tight line-clamp-3">
-                          {item.title}
-                        </p>
-                        {item.quantity > 1 && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            ×{item.quantity}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-          {ebayOrders.every((o) => ebayPacked[o.id]) && (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
-              <CheckCircle2 className="h-8 w-8 text-green-500 opacity-80" />
-              <p className="text-sm font-medium">All eBay orders packed!</p>
-            </div>
-          )}
-        </div>
-      )}
+      <EbaySection
+        orders={ebayOrders}
+        ebayPacked={ebayPacked}
+        setEbayPacked={setEbayPacked}
+      />
 
       {/* ── Deduct from Manapool preview dialog ─────────────────────────── */}
-      <Dialog open={deductDialogOpen} onOpenChange={setDeductDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MinusCircle className="h-5 w-5 text-orange-500" />
-              {deductPreview?.applied
-                ? "Manapool quantities updated"
-                : "Preview: Deduct from Manapool"}
-            </DialogTitle>
-          </DialogHeader>
-
-          {deductPreview && (
-            <div className="flex-1 overflow-y-auto space-y-4 text-sm">
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  {
-                    label: "Will update",
-                    value: deductPreview.plan.filter(
-                      (r) => r.newQuantity !== r.currentQuantity,
-                    ).length,
-                  },
-                  {
-                    label: "No change needed",
-                    value: deductPreview.plan.filter(
-                      (r) => r.newQuantity === r.currentQuantity,
-                    ).length,
-                  },
-                  {
-                    label: "Not on Manapool",
-                    value: deductPreview.notFound.length,
-                  },
-                ].map(({ label, value }) => (
-                  <div
-                    key={label}
-                    className="rounded-lg border bg-muted/40 p-3 text-center"
-                  >
-                    <p className="text-xl font-bold tabular-nums">{value}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {label}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {deductPreview.plan.filter(
-                (r) => r.newQuantity !== r.currentQuantity,
-              ).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Quantity changes
-                  </p>
-                  <div className="rounded-lg border divide-y">
-                    {deductPreview.plan
-                      .filter((r) => r.newQuantity !== r.currentQuantity)
-                      .map((row) => (
-                        <div
-                          key={row.tcgplayerSku}
-                          className="flex items-center justify-between px-3 py-2 gap-3"
-                        >
-                          <span className="font-medium truncate flex-1">
-                            {row.name}
-                          </span>
-                          <div className="flex items-center gap-2 shrink-0 text-xs tabular-nums">
-                            {row.status === "insufficient" && (
-                              <span className="text-amber-600 dark:text-amber-400">
-                                (low stock)
-                              </span>
-                            )}
-                            <span className="text-muted-foreground">
-                              {row.currentQuantity}
-                            </span>
-                            <span className="text-muted-foreground">→</span>
-                            <span
-                              className={`font-bold ${row.newQuantity === 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`}
-                            >
-                              {row.newQuantity}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {deductPreview.notFound.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Not found in Manapool inventory
-                  </p>
-                  <div className="rounded-lg border divide-y">
-                    {deductPreview.notFound.map((item) => (
-                      <div
-                        key={item.tcgplayerSku}
-                        className="px-3 py-2 text-xs text-muted-foreground"
-                      >
-                        {item.name}{" "}
-                        <span className="opacity-50">
-                          (SKU {item.tcgplayerSku})
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {deductPreview.applied && (
-                <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-3 text-green-700 dark:text-green-400 text-sm font-medium">
-                  ✓ {deductPreview.updated} listing
-                  {deductPreview.updated !== 1 ? "s" : ""} updated on Manapool.
-                </div>
-              )}
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setDeductDialogOpen(false)}
-            >
-              {deductPreview?.applied ? "Done" : "Cancel"}
-            </Button>
-            {!deductPreview?.applied &&
-              deductPreview &&
-              deductPreview.plan.filter(
-                (r) => r.newQuantity !== r.currentQuantity,
-              ).length > 0 && (
-                <Button
-                  onClick={handleDeductApply}
-                  disabled={deductMutation.isPending}
-                  className="bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  {deductMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Updating…
-                    </>
-                  ) : (
-                    <>
-                      Apply{" "}
-                      {
-                        deductPreview.plan.filter(
-                          (r) => r.newQuantity !== r.currentQuantity,
-                        ).length
-                      }{" "}
-                      changes
-                    </>
-                  )}
-                </Button>
-              )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeductDialog
+        open={deductDialogOpen}
+        onOpenChange={setDeductDialogOpen}
+        deductPreview={deductPreview}
+        isPending={deductMutation.isPending}
+        onApply={handleDeductApply}
+      />
     </div>
   );
 }
