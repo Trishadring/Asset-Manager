@@ -39,7 +39,7 @@ The parent `manapick.tsx` would become a thin orchestrator ~200 lines.
 
 ---
 
-### AS-002: Consolidate duplicate fetch patterns into a shared hook
+### AS-002: Consolidate duplicate fetch patterns into a shared hook - done
 
 **Files:**
 - `artifacts/accounting/src/hooks/use-finance.ts` (138 lines)
@@ -286,7 +286,7 @@ Non-owner access is denied at the route level rather than relying on UI hiding.
 
 ---
 
-### AS-012: Remove stale comments and template noise
+### AS-012: Remove stale comments and template noise -done
 
 **Files:**
 - `artifacts/api-server/.replit-artifact/artifact.toml` (line 2) — `# TODO - should be excluded from preview`
@@ -296,7 +296,7 @@ Non-owner access is denied at the route level rather than relying on UI hiding.
 
 ---
 
-### AS-013: Align hooks' base URL handling
+### AS-013: Align hooks' base URL handling-done
 
 **Files:**
 - `use-finance.ts` — `getBaseUrl = () => ""` (lines 4, 10, 20, 35, etc.)

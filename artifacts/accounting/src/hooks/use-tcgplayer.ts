@@ -1,6 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-
-const getBaseUrl = () => "";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useApiQuery, useApiPost, apiFetch } from "./use-api";
 
 export interface TcgplayerOrder {
   id: string;
@@ -16,31 +15,17 @@ export interface TcgplayerOrder {
 }
 
 export function useTcgplayerOrders() {
-  return useQuery<TcgplayerOrder[]>({
-    queryKey: ["tcgplayer-orders"],
-    queryFn: async () => {
-      const res = await fetch(`${getBaseUrl()}/api/tcgplayer/orders`);
-      if (!res.ok) throw new Error("Failed to fetch TCGPlayer orders");
-      return res.json();
-    },
-  });
+  return useApiQuery<TcgplayerOrder[]>(["tcgplayer-orders"], "/api/tcgplayer/orders");
 }
 
 export function useImportTcgplayerOrders() {
   const queryClient = useQueryClient();
   return useMutation<{ message: string; upserted: number }, Error, string>({
-    mutationFn: async (csv: string) => {
-      const res = await fetch(`${getBaseUrl()}/api/tcgplayer/import-orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? "Import failed");
-      }
-      return res.json();
-    },
+    mutationFn: (csv) => apiFetch("/api/tcgplayer/import-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv }),
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tcgplayer-orders"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -51,18 +36,11 @@ export function useImportTcgplayerOrders() {
 
 export function useParseTcgplayerPullSheet() {
   return useMutation<{ cards: TcgPullCard[] }, Error, string>({
-    mutationFn: async (csv: string) => {
-      const res = await fetch(`${getBaseUrl()}/api/tcgplayer/parse-pullsheet`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? "Parse failed");
-      }
-      return res.json();
-    },
+    mutationFn: (csv) => apiFetch("/api/tcgplayer/parse-pullsheet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv }),
+    }),
   });
 }
 
@@ -101,17 +79,10 @@ export interface DeductionResult {
 
 export function useDeductFromManapool() {
   return useMutation<DeductionResult, Error, { cards: TcgPullCard[]; apply: boolean }>({
-    mutationFn: async ({ cards, apply }) => {
-      const res = await fetch(`${getBaseUrl()}/api/tcgplayer/deduct-manapool`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cards, apply }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? "Deduct failed");
-      }
-      return res.json();
-    },
+    mutationFn: ({ cards, apply }) => apiFetch("/api/tcgplayer/deduct-manapool", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cards, apply }),
+    }),
   });
 }

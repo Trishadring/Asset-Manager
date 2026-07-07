@@ -1,138 +1,47 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardStats, Purchase, WeeklyStats, CustomSale } from "@/lib/types";
-
-const getBaseUrl = () => "";
+import { useApiQuery, useApiPost, useApiDelete } from "./use-api";
 
 export function useDashboard() {
-  return useQuery<DashboardStats>({
-    queryKey: ["dashboard"],
-    queryFn: async () => {
-      const res = await fetch(`${getBaseUrl()}/api/dashboard`);
-      if (!res.ok) throw new Error("Failed to fetch dashboard");
-      return res.json();
-    },
-  });
+  return useApiQuery<DashboardStats>(["dashboard"], "/api/dashboard");
 }
 
 export function usePurchases() {
-  return useQuery<Purchase[]>({
-    queryKey: ["purchases"],
-    queryFn: async () => {
-      const res = await fetch(`${getBaseUrl()}/api/purchases`);
-      if (!res.ok) throw new Error("Failed to fetch purchases");
-      return res.json();
-    },
-  });
+  return useApiQuery<Purchase[]>(["purchases"], "/api/purchases");
 }
 
 export function useCreatePurchase() {
-  const queryClient = useQueryClient();
-  
-  return useMutation<Purchase, Error, { description: string; amount: number; date?: string }>({
-    mutationFn: async (data) => {
-      const res = await fetch(`${getBaseUrl()}/api/purchases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to create purchase");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+  return useApiPost<Purchase, { description: string; amount: number; date?: string }>(
+    "/api/purchases",
+    [["purchases"], ["dashboard"]],
+  );
 }
 
 export function useCustomSales() {
-  return useQuery<CustomSale[]>({
-    queryKey: ["sales"],
-    queryFn: async () => {
-      const res = await fetch(`/api/sales`);
-      if (!res.ok) throw new Error("Failed to fetch sales");
-      return res.json();
-    },
-  });
+  return useApiQuery<CustomSale[]>(["sales"], "/api/sales");
 }
 
 export function useCreateCustomSale() {
-  const queryClient = useQueryClient();
-  return useMutation<CustomSale, Error, { description: string; amount: number; date?: string; notes?: string }>({
-    mutationFn: async (data) => {
-      const res = await fetch(`/api/sales`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to create sale");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["weekly"] });
-    },
-  });
+  return useApiPost<CustomSale, { description: string; amount: number; date?: string; notes?: string }>(
+    "/api/sales",
+    [["sales"], ["dashboard"], ["weekly"]],
+  );
 }
 
 export function useDeleteCustomSale() {
-  const queryClient = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: async (id) => {
-      const res = await fetch(`/api/sales/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete sale");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["weekly"] });
-    },
-  });
+  return useApiDelete("/api/sales/:id", [["sales"], ["dashboard"], ["weekly"]]);
 }
 
 export function useWeeklyStats() {
-  return useQuery<WeeklyStats[]>({
-    queryKey: ["weekly"],
-    queryFn: async () => {
-      const res = await fetch(`${getBaseUrl()}/api/weekly`);
-      if (!res.ok) throw new Error("Failed to fetch weekly stats");
-      return res.json();
-    },
-  });
+  return useApiQuery<WeeklyStats[]>(["weekly"], "/api/weekly");
 }
 
 export function useSyncEbayShipping() {
-  const queryClient = useQueryClient();
-  return useMutation<{ message: string; synced: number; total: number }, Error>({
-    mutationFn: async () => {
-      const res = await fetch(`${getBaseUrl()}/api/ebay/sync-shipping`, { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+  return useApiPost<{ message: string; synced: number; total: number }>(
+    "/api/ebay/sync-shipping",
+    [["purchases"], ["dashboard"]],
+  );
 }
 
 export function useDeletePurchase() {
-  const queryClient = useQueryClient();
-  
-  return useMutation<void, Error, string>({
-    mutationFn: async (id) => {
-      const res = await fetch(`${getBaseUrl()}/api/purchases/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete purchase");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+  return useApiDelete("/api/purchases/:id", [["purchases"], ["dashboard"]]);
 }
