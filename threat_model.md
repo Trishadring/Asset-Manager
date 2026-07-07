@@ -7,7 +7,6 @@ This repository currently deploys a public path-routed accounting application wi
 Assumptions for security review:
 - Only production-reachable issues are in scope.
 - The current public deployment exposes `/api` and `/accounting/`; the root path returns an artifact listing/404.
-- `app.py` is not part of the currently reachable public deployment unless future scans show otherwise.
 - `app.py` and attached assets are dev-only unless production reachability is demonstrated.
 - Replit-managed TLS is assumed in production.
 - `NODE_ENV` is assumed to be `production` in production deployments.
@@ -27,7 +26,7 @@ Assumptions for security review:
 - **Application → External marketplaces** — the server calls Manapool, eBay, and Scryfall with server-held credentials or tokens. Any route that triggers these calls inherits the seller account's privilege.
 - **OIDC / OAuth provider → Application** — Replit OIDC login and eBay OAuth callbacks must be bound to the intended authenticated actor and deployment state. Callback routes must not trust arbitrary authorization responses or reflect untrusted parameters into HTML.
 - **Public vs authenticated vs owner/admin boundary** — `/api/auth/*`, `/api/healthz`, and `/api/ebay/account-deletion` are public. Most remaining `/api` routes now require an authenticated session, but there is currently no server-side owner/admin or allowlist boundary after login.
-- **Production vs dev-only boundary** — artifact preview tooling and the mockup sandbox should usually be ignored unless a future deployment exposes them publicly.
+- **Production vs dev-only boundary** — artifact preview tooling and the Streamlit app (`app.py`) should usually be ignored unless a future deployment exposes them publicly.
 
 ## Scan Anchors
 
