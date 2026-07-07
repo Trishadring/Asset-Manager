@@ -33,7 +33,7 @@ function ManaPickInner() {
   } = useOrders();
 
   return (
-    <div className="p-6 space-y-6 max-w-screen-xl mx-auto">
+    <div className="space-y-6 max-w-screen-xl">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

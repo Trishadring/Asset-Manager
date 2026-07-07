@@ -75,6 +75,7 @@ externalPort = 3002
 
 [userenv]
 
-[userenv.shared]
-EBAY_DELETION_VERIFICATION_TOKEN = "2a3b799a4a61dd5cec785e6fa172aeda87c6ac58dc58a5a3079d999b7340b1f7"
-EBAY_RUNAME = "trisha_dring-trishadr-replit-tvdwffa"
+# Secrets are set via Replit Secrets UI, not hardcoded here.
+# [userenv.shared]
+# EBAY_DELETION_VERIFICATION_TOKEN = "..."
+# EBAY_RUNAME = "..."

@@ -1,7 +1,8 @@
 const YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 export function setCookie(name: string, value: string, maxAgeSeconds = YEAR_SECONDS) {
-  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/; SameSite=Lax`;
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSeconds}; path=/; SameSite=Lax${secure}`;
 }
 
 export function getCookie(name: string): string | null {
@@ -12,5 +13,6 @@ export function getCookie(name: string): string | null {
 }
 
 export function deleteCookie(name: string) {
-  document.cookie = `${name}=; max-age=0; path=/; SameSite=Lax`;
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=; max-age=0; path=/; SameSite=Lax${secure}`;
 }
