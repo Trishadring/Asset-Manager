@@ -142,7 +142,8 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       res.json(getPlaceholderOrders());
       return;
     }
-    res.status(500).json({ error: String(err) });
+    logger.error(err, "manapick/orders getCredentials error");
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
 
@@ -252,7 +253,7 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
     res.json({ orders, master, sets });
   } catch (err) {
     logger.error(err, "manapick/orders error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -349,7 +350,7 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
     res.json({ results });
   } catch (err) {
     logger.error(err, "manapick/enrich error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -359,7 +360,8 @@ router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
   try {
     ({ email, token } = getCredentials());
   } catch (err) {
-    res.status(500).json({ error: String(err) }); return;
+    logger.error(err, "manapick/orders/:id/ship getCredentials error");
+    res.status(500).json({ error: "Internal server error" }); return;
   }
 
   const orderId = req.params["id"]!;
@@ -378,12 +380,12 @@ router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
       body: JSON.stringify(body),
     });
     if (!r.ok) {
-      const text = await r.text();
-      res.status(r.status).json({ error: text }); return;
+      req.log.warn({ status: r.status, order: orderId }, "Manapool fulfillment update failed");
+      res.status(r.status).json({ error: "Manapool fulfillment update failed" }); return;
     }
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -399,7 +401,7 @@ router.get("/manapick/picks", async (req, res): Promise<void> => {
     res.json({ picks });
   } catch (err) {
     logger.error(err, "manapick/picks GET error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -422,7 +424,7 @@ router.post("/manapick/picks", async (req, res): Promise<void> => {
     res.json({ ok: true });
   } catch (err) {
     logger.error(err, "manapick/picks POST error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

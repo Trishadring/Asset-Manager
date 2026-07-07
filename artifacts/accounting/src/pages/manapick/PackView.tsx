@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2 } from "lucide-react";
 import type { Order, Master } from "./types";
-import { entryImageUrl } from "./types";
+import { entryImageUrl } from "./utils";
 
 export function PackView({
   orders,

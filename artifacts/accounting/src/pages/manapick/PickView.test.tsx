@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PickView, type SetGroup } from "./PickView";
 
 const groups: SetGroup[] = [
@@ -93,7 +94,6 @@ describe("PickView", () => {
 
   it("passes onToggle to CardItem", async () => {
     const onToggle = vi.fn();
-    const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
     render(
       <PickView

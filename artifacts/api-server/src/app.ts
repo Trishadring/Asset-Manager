@@ -8,6 +8,17 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+app.set("trust proxy", 1);
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "0");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  next();
+});
+
 app.use(
   pinoHttp({
     logger,
@@ -36,7 +47,7 @@ app.use(cors({
   },
 }));
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(authMiddleware);
 
 app.use("/api", router);

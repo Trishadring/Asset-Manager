@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import type { MasterEntry } from "./types";
-import { entryImageUrl } from "./types";
+import { entryImageUrl } from "./utils";
 
 export function CardItem({
   cardKey,

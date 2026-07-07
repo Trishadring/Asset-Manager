@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { toast } from "@/hooks/use-toast";
 import {
   useDeductFromManapool,
   type TcgPullCard,
@@ -21,7 +22,7 @@ import type {
   ScryfallCard,
   MasterEntry,
 } from "./types";
-import { colorSortIndex, parseCollectorNumber } from "./types";
+import { colorSortIndex, parseCollectorNumber } from "./utils";
 import type { SetGroup } from "./PickView";
 
 type Phase = "pick" | "pack";
@@ -270,10 +271,11 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
       try {
         const ts = Date.now();
+        const cacheOrders = rawOrders.map((o) => ({ ...o, shipping_address: undefined }));
         localStorage.setItem(
           CACHE_KEY,
           JSON.stringify({
-            orders: rawOrders,
+            orders: cacheOrders,
             master: enrichedMaster,
             sets: rawSets,
             cachedAt: ts,
@@ -590,12 +592,13 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       });
       if (!r.ok) {
         const body = (await r.json().catch(() => ({}))) as { error?: string };
-        alert(`Failed: ${body.error ?? r.status}`);
+        toast({ variant: "destructive", title: "Failed to ship", description: body.error ?? `HTTP ${r.status}` });
         return;
       }
       setShipped((prev) => ({ ...prev, [oid]: true }));
+      toast({ title: "Shipped", description: "Order marked as shipped" });
     } catch (err) {
-      alert(String(err));
+      toast({ variant: "destructive", title: "Failed to ship", description: String(err) });
     }
   }
 

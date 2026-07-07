@@ -1,7 +1,7 @@
 import { Loader2, RefreshCw, Package, ShoppingBag, Upload, X, MinusCircle, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { formatRelativeTime } from "./manapick/types";
+import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
 import { EbaySection } from "./manapick/EbaySection";

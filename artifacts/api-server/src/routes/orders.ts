@@ -54,7 +54,7 @@ router.post("/manapool/inspect", async (req, res): Promise<void> => {
   try {
     ({ email, token } = getCredentials());
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
 
@@ -84,7 +84,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   try {
     ({ email, token } = getCredentials());
   } catch (err) {
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
     return;
   }
 

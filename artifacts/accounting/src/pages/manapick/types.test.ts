@@ -7,9 +7,8 @@ import {
   parseCollectorNumber,
   formatDate,
   formatRelativeTime,
-  type ScryfallCard,
-  type MasterEntry,
-} from "./types";
+} from "./utils";
+import type { ScryfallCard, MasterEntry } from "./types";
 
 describe("scryfallDirectUrl", () => {
   it("returns null for undefined", () => {
