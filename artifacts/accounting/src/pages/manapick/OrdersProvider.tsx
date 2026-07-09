@@ -345,6 +345,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
               id: TCG_ORDER_ID,
               label: "TCGPlayer",
               source: "tcgplayer",
+              shipping_address: undefined,
             });
           }
         }

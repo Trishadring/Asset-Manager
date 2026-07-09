@@ -1,6 +1,6 @@
 import { pgTable, text, real, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const customSalesTable = pgTable("custom_sales", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

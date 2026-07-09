@@ -59,7 +59,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const accountingDist = path.resolve(__dirname, "../../accounting/dist/public");
 
 app.use("/accounting", express.static(accountingDist, { index: false }));
-app.get("/accounting/*", (_req, res) => {
+app.get("/accounting/*splat", (_req, res) => {
   res.sendFile(path.join(accountingDist, "index.html"));
 });
 

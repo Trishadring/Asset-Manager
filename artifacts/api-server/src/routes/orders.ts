@@ -152,7 +152,9 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
 
       const gross = centsToAmount(o.total_cents);
       const date = o.created_at ? new Date(String(o.created_at)) : new Date();
-      const detail = details[j]!.status === "fulfilled" ? details[j]!.value : null;
+      const detailResult = details[j]!;
+      const detail =
+        detailResult.status === "fulfilled" ? detailResult.value : null;
 
       const payment = detail
         ? (detail.payment as Record<string, unknown> | undefined)

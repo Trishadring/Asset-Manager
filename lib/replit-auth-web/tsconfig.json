@@ -11,5 +11,9 @@
     "lib": ["esnext", "dom", "dom.iterable"]
   },
   "include": ["src"],
-  "references": []
+  "references": [
+    {
+      "path": "../api-zod"
+    }
+  ]
 }
