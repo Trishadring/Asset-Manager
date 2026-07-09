@@ -305,7 +305,7 @@ router.post("/tcgplayer/import-orders", async (req, res): Promise<void> => {
     res.json({ message: `Imported ${rows.length} TCGPlayer order${rows.length !== 1 ? "s" : ""}.`, upserted: rows.length });
   } catch (err) {
     logger.error(err, "tcgplayer/import-orders error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -342,7 +342,7 @@ router.post("/tcgplayer/parse-pullsheet", async (req, res): Promise<void> => {
     res.json({ cards });
   } catch (err) {
     logger.error(err, "tcgplayer/parse-pullsheet error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -359,7 +359,7 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
     if (!e || !t) throw new Error("MANAPOOL_EMAIL or MANAPOOL_API_KEY not configured.");
     email = e; token = t;
   } catch (err) {
-    res.status(500).json({ error: String(err) }); return;
+    res.status(500).json({ error: "Internal server error" }); return;
   }
 
   const { cards, apply = false } = req.body as {
@@ -403,7 +403,8 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
       const r = await fetch(url, { headers: mpHeaders });
       if (!r.ok) {
         const text = await r.text();
-        res.status(502).json({ error: `Manapool inventory fetch failed (${r.status}): ${text.slice(0, 200)}` });
+        req.log.warn({ status: r.status }, "Manapool inventory fetch failed");
+        res.status(502).json({ error: "Manapool inventory fetch failed" });
         return;
       }
       const body = (await r.json()) as {
@@ -416,7 +417,8 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
       if (!cursor || page.length < limit) break;
     }
   } catch (err) {
-    res.status(502).json({ error: `Failed to fetch Manapool inventory: ${String(err)}` }); return;
+    logger.error(err, "tcgplayer/deduct-manapool inventory fetch error");
+    res.status(502).json({ error: "Failed to fetch Manapool inventory" }); return;
   }
 
   // Build a map from tcgplayer_sku -> inventory item (only items we care about)
@@ -491,7 +493,8 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
 
     if (!r.ok) {
       const text = await r.text();
-      res.status(502).json({ error: `Manapool inventory update failed (${r.status}): ${text.slice(0, 200)}` });
+      req.log.warn({ status: r.status }, "Manapool inventory update failed");
+      res.status(502).json({ error: "Manapool inventory update failed" });
       return;
     }
 
@@ -499,7 +502,7 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
     res.json({ applied: true, updated: toUpdate.length, plan, notFound });
   } catch (err) {
     logger.error(err, "tcgplayer/deduct-manapool apply error");
-    res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

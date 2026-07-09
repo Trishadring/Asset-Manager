@@ -191,7 +191,8 @@ router.get("/ebay/oauth-callback", async (req, res): Promise<void> => {
   const error = req.query["error"];
 
   if (error || !code || typeof code !== "string") {
-    res.status(400).send(`<h2>eBay authorization failed</h2><p>${String(error ?? "No code received")}</p>`);
+    req.log.warn({ error }, "eBay OAuth callback: authorization failed or no code");
+    res.status(400).send(`<h2>eBay authorization failed</h2><p>Please try again from the Orders page.</p>`);
     return;
   }
 
@@ -220,8 +221,8 @@ router.get("/ebay/oauth-callback", async (req, res): Promise<void> => {
   });
 
   if (!tokenRes.ok) {
-    const text = await tokenRes.text();
-    res.status(502).send(`<h2>Token exchange failed (${tokenRes.status})</h2><pre>${text}</pre>`);
+    req.log.warn({ status: tokenRes.status }, "eBay OAuth token exchange failed");
+    res.status(502).send(`<h2>Token exchange failed</h2><p>Check eBay credentials and try again. See server logs for details.</p>`);
     return;
   }
 
@@ -309,8 +310,8 @@ router.post("/ebay/sync", async (req, res): Promise<void> => {
       total: rows.length,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(502).json({ error: message });
+    req.log.error({ err }, "ebay/sync failed");
+    res.status(502).json({ error: "eBay sync failed" });
   }
 });
 
@@ -431,9 +432,8 @@ router.post("/ebay/sync-shipping", async (req, res): Promise<void> => {
       total: labels.length,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "ebay sync-shipping failed");
-    res.status(502).json({ error: message });
+    res.status(502).json({ error: "eBay shipping sync failed" });
   }
 });
 
@@ -526,9 +526,8 @@ router.get("/ebay/pick-orders", async (req, res): Promise<void> => {
 
     res.json({ orders: result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err }, "ebay pick-orders failed");
-    res.status(502).json({ error: message });
+    res.status(502).json({ error: "Failed to fetch eBay pick orders" });
   }
 });
 

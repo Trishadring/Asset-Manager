@@ -64,6 +64,12 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     historyApiFallback: true,
+    proxy: {
+      "/api": {
+        target: process.env.API_PROXY_TARGET ?? "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },
@@ -71,6 +77,7 @@ export default defineConfig({
   preview: {
     port,
     host: "0.0.0.0",
-    allowedHosts: true,
+    allowedHosts: ["localhost", ".localhost", "127.0.0.1"],
+    historyApiFallback: true,
   },
 });
