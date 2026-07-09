@@ -1,4 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -51,6 +53,15 @@ app.use(express.json({ limit: "1mb" }));
 app.use(authMiddleware);
 
 app.use("/api", router);
+
+// ── SPA fallback for accounting app (standalone/self-hosted) ──────────────
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const accountingDist = path.resolve(__dirname, "../../accounting/dist/public");
+
+app.use("/accounting", express.static(accountingDist, { index: false }));
+app.get("/accounting/*", (_req, res) => {
+  res.sendFile(path.join(accountingDist, "index.html"));
+});
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, path: _req.path }, "Unhandled error");

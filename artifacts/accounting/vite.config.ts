@@ -78,5 +78,6 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: ["localhost", ".localhost", "127.0.0.1"],
+    historyApiFallback: true,
   },
 });
