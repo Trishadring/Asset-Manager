@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, tcgplayerOrdersTable } from "@workspace/db";
 import { sql, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { getScryfallSetCodeMap } from "../lib/scryfall-sets";
 
 const router: IRouter = Router();
 
@@ -105,40 +106,12 @@ function toScryfallName(displayName: string): string {
     .trim();
 }
 
-// ─── Scryfall sets cache ────────────────────────────────────────────────────
-// Maps lowercase set name → Scryfall set code. Refreshed once per hour.
-let sfSetsCache: { codes: Map<string, string>; fetchedAt: number } | null = null;
-const SF_SETS_TTL_MS = 3_600_000;
-
-async function getScryfallSetCodes(): Promise<Map<string, string>> {
-  const now = Date.now();
-  if (sfSetsCache && now - sfSetsCache.fetchedAt < SF_SETS_TTL_MS) {
-    return sfSetsCache.codes;
-  }
-  try {
-    const r = await fetch("https://api.scryfall.com/sets", {
-      headers: { "User-Agent": "TCGAccounting/1.0" },
-    });
-    if (!r.ok) return sfSetsCache?.codes ?? new Map();
-    const body = (await r.json()) as { data: Array<{ code: string; name: string }> };
-    const codes = new Map<string, string>();
-    for (const s of body.data) {
-      codes.set(s.name.toLowerCase(), s.code);
-    }
-    sfSetsCache = { codes, fetchedAt: now };
-    return codes;
-  } catch {
-    return sfSetsCache?.codes ?? new Map();
-  }
-}
-
 /** Resolve a TCGPlayer set name to a Scryfall set code.
  *  Tries exact match first, then a normalised partial match. */
 function resolveSetCode(setName: string, codes: Map<string, string>): string {
   const lower = setName.toLowerCase();
   const exact = codes.get(lower);
   if (exact) return exact;
-  // Partial: find any Scryfall set whose name contains the TCGPlayer name or vice-versa
   for (const [sfName, sfCode] of codes) {
     if (sfName.includes(lower) || lower.includes(sfName)) return sfCode;
   }
@@ -329,7 +302,7 @@ router.post("/tcgplayer/parse-pullsheet", async (req, res): Promise<void> => {
       return;
     }
 
-    const setCodeMap = await getScryfallSetCodes();
+    const setCodeMap = await getScryfallSetCodeMap();
     const cards = parsePullSheetCSV(csv, setCodeMap);
     if (cards.length === 0) {
       res.status(400).json({

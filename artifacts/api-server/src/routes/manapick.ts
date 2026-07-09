@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { manapickPicksTable } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { getScryfallSets } from "../lib/scryfall-sets";
 
 const router: IRouter = Router();
 
@@ -226,27 +227,12 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       }
     }
 
-    // Fetch all Scryfall sets in one call, then filter to codes in this batch of orders
+    // Fetch Scryfall sets (cached 1h), filter to codes in this batch of orders
     const neededCodes = new Set(Object.values(master).map((e) => e.set).filter(Boolean));
+    const allSets = await getScryfallSets();
     const sets: Record<string, { name: string; released_at: string }> = {};
-    try {
-      const r = await fetch(`${SCRYFALL_BASE}/sets`, {
-        headers: { "User-Agent": "TCGAccounting/1.0" },
-      });
-      if (r.ok) {
-        const body = (await r.json()) as { data?: Array<Record<string, unknown>> };
-        for (const s of body.data ?? []) {
-          const code = String(s["code"] ?? "").toLowerCase();
-          if (neededCodes.has(code)) {
-            sets[code] = {
-              name: String(s["name"] ?? code),
-              released_at: String(s["released_at"] ?? "1900-01-01"),
-            };
-          }
-        }
-      }
-    } catch {
-      // sets will be empty; client falls back to set codes for display
+    for (const [code, info] of Object.entries(allSets)) {
+      if (neededCodes.has(code)) sets[code] = info;
     }
 
     req.log.info({ orders: orders.length, uniqueCards: Object.keys(master).length, sets: Object.keys(sets).length }, "manapick orders fetched");
@@ -258,21 +244,10 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
 });
 
 // GET /api/manapick/sets
-// Scryfall sets for sorting and display
+// Scryfall sets for sorting and display (cached 1h)
 router.get("/manapick/sets", async (_req, res): Promise<void> => {
-  try {
-    const r = await fetch(`${SCRYFALL_BASE}/sets`);
-    if (!r.ok) { res.json({ sets: {} }); return; }
-    const body = (await r.json()) as { data?: Array<Record<string, unknown>> };
-    const sets: Record<string, { name: string; released_at: string }> = {};
-    for (const s of body.data ?? []) {
-      const code = String(s["code"] ?? "").toLowerCase();
-      if (code) sets[code] = { name: String(s["name"] ?? code), released_at: String(s["released_at"] ?? "1900-01-01") };
-    }
-    res.json({ sets });
-  } catch {
-    res.json({ sets: {} });
-  }
+  const sets = await getScryfallSets();
+  res.json({ sets });
 });
 
 // POST /api/manapick/enrich
