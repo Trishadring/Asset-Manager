@@ -59,6 +59,7 @@ export function EbaySection({
                 <div key={i} className="flex items-center gap-3">
                   {item.imageUrl ? (
                     <img
+                      loading="lazy"
                       src={item.imageUrl}
                       alt={item.title}
                       className="w-16 h-16 object-cover rounded-md border shrink-0"

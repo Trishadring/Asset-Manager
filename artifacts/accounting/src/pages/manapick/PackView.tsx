@@ -133,6 +133,7 @@ export function PackView({
                     <div key={key} className="relative flex-shrink-0">
                       {img ? (
                         <img
+                          loading="lazy"
                           src={img}
                           alt={entry.name}
                           className="w-full rounded-lg block"
