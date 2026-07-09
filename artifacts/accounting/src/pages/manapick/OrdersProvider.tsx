@@ -116,6 +116,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const [ebayPacked, setEbayPacked] = useState<Record<string, boolean>>({});
   const sessionIdRef = useRef("");
   const tcgFileInputRef = useRef<HTMLInputElement>(null);
+  const tcgCardsRef = useRef<TcgPullCard[]>([]);
 
   // Restore from localStorage cache on mount
   useEffect(() => {
@@ -204,6 +205,68 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setShipped({});
       setLoading(false);
 
+      // Re-merge TCGPlayer data that was loaded before sync
+      if (tcgCardsRef.current.length > 0) {
+        const TCG_ORDER_ID = "tcgplayer-pullsheet";
+        setOrders((prev) => {
+          if (prev.some((o) => o.id === TCG_ORDER_ID)) return prev;
+          return [
+            ...prev,
+            { id: TCG_ORDER_ID, label: "TCGPlayer", source: "tcgplayer" },
+          ];
+        });
+        setOrderToBin((prev) => {
+          if (prev[TCG_ORDER_ID]) return prev;
+          const maxBin = Math.max(0, ...Object.values(prev));
+          return { ...prev, [TCG_ORDER_ID]: maxBin + 1 };
+        });
+        setMaster((prev) => {
+          const next = { ...prev };
+          for (const card of tcgCardsRef.current) {
+            const setSlug =
+              card.setCode ||
+              card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+            const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|${card.finish}`;
+            if (!next[key]) {
+              next[key] = {
+                name: card.name,
+                set: setSlug,
+                collector_number: card.collectorNumber,
+                finish: card.finish,
+                quantity: 0,
+                allocations: {},
+                source: "tcgplayer",
+              };
+            }
+            next[key].quantity += card.orderQuantity;
+            next[key].allocations[TCG_ORDER_ID] =
+              (next[key].allocations[TCG_ORDER_ID] ?? 0) + card.orderQuantity;
+          }
+          return next;
+        });
+        setSets((prev) => {
+          const next = { ...prev };
+          for (const card of tcgCardsRef.current) {
+            const code =
+              card.setCode ||
+              card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+            if (!next[code]) {
+              next[code] = {
+                name: card.setName,
+                released_at: card.setReleaseDate || "1900-01-01",
+              };
+            }
+          }
+          return next;
+        });
+        // Update sessionId to include TCG data
+        const tcgSid = [...rawOrders.map((o) => o.id), TCG_ORDER_ID]
+          .sort()
+          .join("|");
+        sessionIdRef.current = tcgSid;
+        setSessionId(tcgSid);
+      }
+
       try {
         const picksRes = await fetch(
           `/api/manapick/picks?session=${encodeURIComponent(sid)}`,
@@ -221,7 +284,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       }
 
       const cardKeys = Object.keys(rawMaster);
-      if (cardKeys.length === 0) return;
+      if (cardKeys.length === 0 && tcgCardsRef.current.length === 0) return;
 
       setEnrichProgress({ done: 0, total: cardKeys.length });
 
@@ -271,12 +334,47 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
       try {
         const ts = Date.now();
-        const cacheOrders = rawOrders.map((o) => ({ ...o, shipping_address: undefined }));
+        const tcgMergedOrders = rawOrders.map((o) => ({
+          ...o,
+          shipping_address: undefined,
+        }));
+        if (tcgCardsRef.current.length > 0) {
+          const TCG_ORDER_ID = "tcgplayer-pullsheet";
+          if (!tcgMergedOrders.some((o) => o.id === TCG_ORDER_ID)) {
+            tcgMergedOrders.push({
+              id: TCG_ORDER_ID,
+              label: "TCGPlayer",
+              source: "tcgplayer",
+            });
+          }
+        }
+        const tcgMergedMaster = { ...enrichedMaster };
+        for (const card of tcgCardsRef.current) {
+          const setSlug =
+            card.setCode ||
+            card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
+          const key = `${card.name}|tcg:${card.setName}|${card.collectorNumber}|${card.finish}`;
+          if (!tcgMergedMaster[key]) {
+            tcgMergedMaster[key] = {
+              name: card.name,
+              set: setSlug,
+              collector_number: card.collectorNumber,
+              finish: card.finish,
+              quantity: 0,
+              allocations: {},
+              source: "tcgplayer",
+            };
+          }
+          tcgMergedMaster[key].quantity += card.orderQuantity;
+          tcgMergedMaster[key].allocations["tcgplayer-pullsheet"] =
+            (tcgMergedMaster[key].allocations["tcgplayer-pullsheet"] ?? 0) +
+            card.orderQuantity;
+        }
         localStorage.setItem(
           CACHE_KEY,
           JSON.stringify({
-            orders: cacheOrders,
-            master: enrichedMaster,
+            orders: tcgMergedOrders,
+            master: tcgMergedMaster,
             sets: rawSets,
             cachedAt: ts,
           }),
@@ -316,6 +414,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         const { cards } = (await res.json()) as { cards: TcgPullCard[] };
 
         setTcgCards(cards);
+        tcgCardsRef.current = cards;
         setDeductPreview(null);
 
         const TCG_ORDER_ID = "tcgplayer-pullsheet";
@@ -468,6 +567,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       return next;
     });
     setTcgCards([]);
+    tcgCardsRef.current = [];
     setDeductPreview(null);
     setTcgError(null);
   }, []);
