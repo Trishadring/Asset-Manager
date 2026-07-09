@@ -33,7 +33,7 @@ export function CardItem({
         }
       >
         {img ? (
-          <img src={img} alt={entry.name} className="w-full rounded-xl block" />
+          <img loading="lazy" src={img} alt={entry.name} className="w-full rounded-xl block" />
         ) : (
           <div className="w-full aspect-[63/88] rounded-xl bg-muted flex items-center justify-center text-xs text-muted-foreground px-2 text-center">
             {entry.name}
