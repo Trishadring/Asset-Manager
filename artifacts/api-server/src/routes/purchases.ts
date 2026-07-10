@@ -42,7 +42,7 @@ router.delete("/purchases/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Purchase not found" });
     return;
   }
-  res.sendStatus(204);
+  res.json({ success: true });
 });
 
 export default router;

@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import {
   useDeductFromManapool,
@@ -86,6 +87,7 @@ export function useOrders(): OrdersContextValue {
 }
 
 export function OrdersProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [orders, setOrders] = useState<Order[]>([]);
   const [master, setMaster] = useState<Master>({});
   const [sets, setSets] = useState<SetsMap>({});
@@ -170,9 +172,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     try {
       const [ordersRes] = await Promise.all([
         fetch("/api/manapick/orders"),
-        fetch("/api/manapool/sync", { method: "POST" }).catch(() =>
-          console.warn("manapool sync failed"),
-        ),
+        fetch("/api/manapool/sync", { method: "POST" })
+          .then(() => queryClient.invalidateQueries({ queryKey: ["orders"] }))
+          .catch(() => console.warn("manapool sync failed")),
       ]);
 
       if (!ordersRes.ok) {
