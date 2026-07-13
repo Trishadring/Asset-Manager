@@ -480,12 +480,17 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
 });
 
 // GET /api/tcgplayer/orders
-router.get("/tcgplayer/orders", async (_req, res): Promise<void> => {
-  const orders = await db
-    .select()
-    .from(tcgplayerOrdersTable)
-    .orderBy(desc(tcgplayerOrdersTable.date));
-  res.json(orders);
+router.get("/tcgplayer/orders", async (req, res): Promise<void> => {
+  try {
+    const orders = await db
+      .select()
+      .from(tcgplayerOrdersTable)
+      .orderBy(desc(tcgplayerOrdersTable.date));
+    res.json(orders);
+  } catch (err) {
+    req.log.error({ err }, "GET /tcgplayer/orders failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // DELETE /api/tcgplayer/orders

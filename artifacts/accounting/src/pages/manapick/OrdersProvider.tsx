@@ -121,6 +121,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   const tcgCardsRef = useRef<TcgPullCard[]>([]);
 
   // Restore from localStorage cache on mount
+  const restoredRef = useRef(false);
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
@@ -146,6 +147,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setSessionId(sid);
       sessionIdRef.current = sid;
       setCachedAt(cached.cachedAt);
+      restoredRef.current = true;
 
       if (sid) {
         fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`)
@@ -158,9 +160,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Auto-fetch orders on mount
+  // Auto-fetch orders on mount (skip if cache was restored with data)
   useEffect(() => {
-    fetchOrders();
+    if (!restoredRef.current) fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -168,6 +170,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     setEnrichProgress({ done: 0, total: 0 });
+
+    const tcgCardsAtStart = tcgCardsRef.current;
 
     try {
       const [ordersRes] = await Promise.all([
@@ -208,7 +212,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setLoading(false);
 
       // Re-merge TCGPlayer data that was loaded before sync
-      if (tcgCardsRef.current.length > 0) {
+      if (tcgCardsAtStart.length > 0) {
         const TCG_ORDER_ID = "tcgplayer-pullsheet";
         setOrders((prev) => {
           if (prev.some((o) => o.id === TCG_ORDER_ID)) return prev;
@@ -224,7 +228,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         });
         setMaster((prev) => {
           const next = { ...prev };
-          for (const card of tcgCardsRef.current) {
+          for (const card of tcgCardsAtStart) {
             const setSlug =
               card.setCode ||
               card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
@@ -248,7 +252,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         });
         setSets((prev) => {
           const next = { ...prev };
-          for (const card of tcgCardsRef.current) {
+          for (const card of tcgCardsAtStart) {
             const code =
               card.setCode ||
               card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);
@@ -286,7 +290,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       }
 
       const cardKeys = Object.keys(rawMaster);
-      if (cardKeys.length === 0 && tcgCardsRef.current.length === 0) return;
+      if (cardKeys.length === 0 && tcgCardsAtStart.length === 0) return;
 
       setEnrichProgress({ done: 0, total: cardKeys.length });
 
@@ -340,7 +344,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           ...o,
           shipping_address: undefined,
         }));
-        if (tcgCardsRef.current.length > 0) {
+        if (tcgCardsAtStart.length > 0) {
           const TCG_ORDER_ID = "tcgplayer-pullsheet";
           if (!tcgMergedOrders.some((o) => o.id === TCG_ORDER_ID)) {
             tcgMergedOrders.push({
@@ -352,7 +356,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
           }
         }
         const tcgMergedMaster = { ...enrichedMaster };
-        for (const card of tcgCardsRef.current) {
+        for (const card of tcgCardsAtStart) {
           const setSlug =
             card.setCode ||
             card.setName.toLowerCase().replace(/\s+/g, "-").slice(0, 6);

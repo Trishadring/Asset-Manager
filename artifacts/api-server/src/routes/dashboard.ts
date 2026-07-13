@@ -1,39 +1,46 @@
 import { Router, type IRouter } from "express";
 import { sum, sql } from "drizzle-orm";
 import { db, purchasesTable, manapoolOrdersTable, customSalesTable, ebayOrdersTable, tcgplayerOrdersTable } from "@workspace/db";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 router.get("/dashboard", async (_req, res): Promise<void> => {
-  const [expRow] = await db
-    .select({ total: sum(purchasesTable.amount) })
-    .from(purchasesTable);
-  const [revRow] = await db
-    .select({ total: sum(manapoolOrdersTable.netPayout) })
-    .from(manapoolOrdersTable);
-  const [customRevRow] = await db
-    .select({ total: sum(customSalesTable.amount) })
-    .from(customSalesTable);
-  const [ebayRevRow] = await db
-    .select({ total: sum(ebayOrdersTable.netPayout) })
-    .from(ebayOrdersTable);
-  const [tcgRevRow] = await db
-    .select({ total: sum(tcgplayerOrdersTable.netPayout) })
-    .from(tcgplayerOrdersTable);
+  try {
+    const [expRow] = await db
+      .select({ total: sum(purchasesTable.amount) })
+      .from(purchasesTable);
+    const [revRow] = await db
+      .select({ total: sum(manapoolOrdersTable.netPayout) })
+      .from(manapoolOrdersTable);
+    const [customRevRow] = await db
+      .select({ total: sum(customSalesTable.amount) })
+      .from(customSalesTable);
+    const [ebayRevRow] = await db
+      .select({ total: sum(ebayOrdersTable.netPayout) })
+      .from(ebayOrdersTable);
+    const [tcgRevRow] = await db
+      .select({ total: sum(tcgplayerOrdersTable.netPayout) })
+      .from(tcgplayerOrdersTable);
 
-  const totalExpenses = Number(expRow?.total ?? 0);
-  const totalRevenue =
-    Number(revRow?.total ?? 0) +
-    Number(customRevRow?.total ?? 0) +
-    Number(ebayRevRow?.total ?? 0) +
-    Number(tcgRevRow?.total ?? 0);
-  const netProfit = totalRevenue - totalExpenses;
+    const totalExpenses = Number(expRow?.total ?? 0);
+    const totalRevenue =
+      Number(revRow?.total ?? 0) +
+      Number(customRevRow?.total ?? 0) +
+      Number(ebayRevRow?.total ?? 0) +
+      Number(tcgRevRow?.total ?? 0);
+    const netProfit = totalRevenue - totalExpenses;
 
-  res.json({ totalExpenses, totalRevenue, netProfit });
+    res.json({ totalExpenses, totalRevenue, netProfit });
+  } catch (err) {
+    logger.error(err, "GET /dashboard failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 router.get("/weekly", async (_req, res): Promise<void> => {
-  const revenueRows = await db.execute(sql`
+  try {
+    const revenueRows = await db.execute(sql`
     SELECT
       to_char(date_trunc('week', date AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS week,
       ROUND(SUM(net_payout)::numeric, 2) AS revenue,
@@ -133,6 +140,10 @@ router.get("/weekly", async (_req, res): Promise<void> => {
     .map((w) => ({ ...w, profit: w.revenue - w.spending }));
 
   res.json(weeks);
+  } catch (err) {
+    logger.error(err, "GET /weekly failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;
