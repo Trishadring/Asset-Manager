@@ -29,6 +29,7 @@ import type { SetGroup } from "./PickView";
 type Phase = "pick" | "pack";
 
 const CACHE_KEY = "manapick-cache";
+const DEDUCTED_SKUS_KEY = "manapick-deducted-skus";
 
 interface OrdersContextValue {
   orders: Order[];
@@ -54,6 +55,7 @@ interface OrdersContextValue {
   deductPreview: DeductionResult | null;
   deductDialogOpen: boolean;
   deductMutation: ReturnType<typeof useDeductFromManapool>;
+  deductedSkus: Set<number>;
   totalCards: number;
   pickedCards: number;
   setGroups: SetGroup[];
@@ -112,6 +114,18 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   );
   const [deductDialogOpen, setDeductDialogOpen] = useState(false);
   const deductMutation = useDeductFromManapool();
+  const [deductedSkus, setDeductedSkus] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem(DEDUCTED_SKUS_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const persistDeductedSkus = useCallback((skus: Set<number>) => {
+    localStorage.setItem(DEDUCTED_SKUS_KEY, JSON.stringify([...skus]));
+  }, []);
   const [ebayOrders, setEbayOrders] = useState<EbayPickOrder[]>([]);
   const [ebayLoading, setEbayLoading] = useState(false);
   const [ebayError, setEbayError] = useState<string | null>(null);
@@ -581,8 +595,15 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const handleDeductPreview = useCallback(() => {
     if (tcgCards.length === 0) return;
+    const remaining = tcgCards.filter(
+      (c) => c.tcgplayerSku === null || !deductedSkus.has(c.tcgplayerSku),
+    );
+    if (remaining.length === 0) {
+      setTcgError("All cards in this CSV have already been deducted.");
+      return;
+    }
     deductMutation.mutate(
-      { cards: tcgCards, apply: false },
+      { cards: remaining, apply: false },
       {
         onSuccess: (result) => {
           setDeductPreview(result);
@@ -591,20 +612,31 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         onError: (err) => setTcgError(`Deduct preview failed: ${err.message}`),
       },
     );
-  }, [tcgCards, deductMutation]);
+  }, [tcgCards, deductMutation, deductedSkus]);
 
   const handleDeductApply = useCallback(() => {
     if (tcgCards.length === 0) return;
+    const remaining = tcgCards.filter(
+      (c) => c.tcgplayerSku === null || !deductedSkus.has(c.tcgplayerSku),
+    );
     deductMutation.mutate(
-      { cards: tcgCards, apply: true },
+      { cards: remaining, apply: true },
       {
         onSuccess: (result) => {
           setDeductPreview(result);
+          const newlyDeducted = new Set(deductedSkus);
+          for (const row of result.plan) {
+            if (row.newQuantity !== row.currentQuantity) {
+              newlyDeducted.add(row.tcgplayerSku);
+            }
+          }
+          setDeductedSkus(newlyDeducted);
+          persistDeductedSkus(newlyDeducted);
         },
         onError: (err) => setTcgError(`Deduct failed: ${err.message}`),
       },
     );
-  }, [tcgCards, deductMutation]);
+  }, [tcgCards, deductMutation, deductedSkus, persistDeductedSkus]);
 
   const togglePick = useCallback((pk: string) => {
     setPicked((prev) => {
@@ -771,6 +803,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     deductPreview,
     deductDialogOpen,
     deductMutation,
+    deductedSkus,
     totalCards,
     pickedCards,
     setGroups,

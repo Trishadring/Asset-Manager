@@ -53,11 +53,36 @@ export async function getScryfallSetCodeMap(): Promise<Map<string, string>> {
 
 export async function resolveSetCode(setName: string): Promise<string> {
   const codes = await getScryfallSetCodeMap();
-  const lower = setName.toLowerCase();
+  const lower = setName.toLowerCase().trim();
   const exact = codes.get(lower);
   if (exact) return exact;
+
+  const isCommanderPrefixed = /^commander:\s*/i.test(setName);
+  const stripped = lower.replace(/^commander:\s*/i, "").trim();
+
+  let bestCode = "";
+  let bestScore = Infinity;
+
   for (const [sfName, sfCode] of codes) {
-    if (sfName.includes(lower) || lower.includes(sfName)) return sfCode;
+    const sfLower = sfName.toLowerCase();
+    let score = Infinity;
+
+    if (sfLower.includes(lower) || lower.includes(sfLower)) {
+      score = Math.abs(sfLower.length - lower.length);
+    } else if (stripped !== lower && (sfLower.includes(stripped) || stripped.includes(sfLower))) {
+      score = Math.abs(sfLower.length - stripped.length) + 10;
+    }
+
+    if (score < Infinity) {
+      if (isCommanderPrefixed && sfLower.includes("commander")) {
+        score -= 5;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        bestCode = sfCode;
+      }
+    }
   }
-  return "";
+
+  return bestCode;
 }

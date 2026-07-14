@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2 } from "lucide-react";
 import type { Order, Master } from "./types";
-import { entryImageUrl } from "./utils";
+import { entryImageUrl, colorSortIndex, parseCollectorNumber } from "./utils";
 
 export function PackView({
   orders,
@@ -66,9 +66,15 @@ export function PackView({
               .filter((i) => i.product?.single)
               .reduce((s, i) => s + (i.quantity ?? 1), 0);
 
-        const orderCards = Object.entries(master).filter(
-          ([, e]) => (e.allocations[oid] ?? 0) > 0,
-        );
+        const orderCards = Object.entries(master)
+          .filter(([, e]) => (e.allocations[oid] ?? 0) > 0)
+          .sort(([, a], [, b]) => {
+            const ci = colorSortIndex(a.scryfall) - colorSortIndex(b.scryfall);
+            if (ci !== 0) return ci;
+            const [an] = parseCollectorNumber(a.collector_number);
+            const [bn] = parseCollectorNumber(b.collector_number);
+            return an - bn;
+          });
 
         return (
           <div
@@ -136,12 +142,22 @@ export function PackView({
                           loading="lazy"
                           src={img}
                           alt={entry.name}
-                          className="w-full rounded-lg block"
+                          className={`w-full rounded-lg block ${(entry.finish === "foil" || entry.finish === "etched") ? "ring-2 ring-yellow-400/70" : ""}`}
                         />
                       ) : (
                         <div className="w-full aspect-[63/88] rounded-lg bg-muted flex items-center justify-center text-[9px] text-muted-foreground px-1 text-center leading-tight">
                           {entry.name}
                         </div>
+                      )}
+                      {entry.finish === "foil" && (
+                        <span className="absolute top-1 left-1 bg-yellow-500/90 text-white text-[9px] font-bold rounded px-1 leading-tight">
+                          FOIL
+                        </span>
+                      )}
+                      {entry.finish === "etched" && (
+                        <span className="absolute top-1 left-1 bg-purple-500/90 text-white text-[9px] font-bold rounded px-1 leading-tight">
+                          ETCHED
+                        </span>
                       )}
                       {qty > 1 && (
                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-bold rounded px-1 leading-tight">

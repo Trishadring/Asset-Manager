@@ -30,6 +30,7 @@ function ManaPickInner() {
     shipped, tracking, shipOrder, handleTrackingChange,
     ebayPacked, setEbayPacked,
     deductDialogOpen, setDeductDialogOpen, deductPreview, handleDeductApply,
+    deductedSkus, tcgCards,
   } = useOrders();
 
   return (
@@ -300,6 +301,7 @@ function ManaPickInner() {
         deductPreview={deductPreview}
         isPending={deductMutation.isPending}
         onApply={handleDeductApply}
+        skippedCount={tcgCards.filter((c) => c.tcgplayerSku !== null && deductedSkus.has(c.tcgplayerSku)).length}
       />
     </div>
   );
