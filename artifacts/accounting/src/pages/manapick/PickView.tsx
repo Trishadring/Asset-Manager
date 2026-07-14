@@ -1,5 +1,6 @@
 import { CardItem } from "./CardItem";
 import type { MasterEntry, SetsMap } from "./types";
+import { formatDate } from "./utils";
 
 export interface SetGroup {
   setCode: string;
@@ -26,9 +27,12 @@ export function PickView({
             <h2 className="text-lg font-bold">
               {setInfo?.name ?? setCode.toUpperCase()}
             </h2>
-            {setInfo?.name && (
+            {setInfo && (
               <p className="text-xs text-muted-foreground">
                 {setCode.toUpperCase()}
+                {setInfo.released_at && setInfo.released_at !== "1900-01-01"
+                  ? ` · ${formatDate(setInfo.released_at)}`
+                  : ""}
               </p>
             )}
           </div>

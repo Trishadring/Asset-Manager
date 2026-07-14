@@ -15,12 +15,14 @@ export function DeductDialog({
   deductPreview,
   isPending,
   onApply,
+  skippedCount = 0,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   deductPreview: DeductionResult | null;
   isPending: boolean;
   onApply: () => void;
+  skippedCount?: number;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -66,6 +68,12 @@ export function DeductDialog({
                 </div>
               ))}
             </div>
+
+            {skippedCount > 0 && (
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 text-blue-700 dark:text-blue-400 text-sm">
+                {skippedCount} card{skippedCount !== 1 ? "s" : ""} skipped — already deducted in a previous run.
+              </div>
+            )}
 
             {deductPreview.plan.filter(
               (r) => r.newQuantity !== r.currentQuantity,

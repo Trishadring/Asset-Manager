@@ -107,15 +107,40 @@ function toScryfallName(displayName: string): string {
 }
 
 /** Resolve a TCGPlayer set name to a Scryfall set code.
- *  Tries exact match first, then a normalised partial match. */
+ *  Tries exact match first, then partial matching with commander-aware scoring. */
 function resolveSetCode(setName: string, codes: Map<string, string>): string {
-  const lower = setName.toLowerCase();
+  const lower = setName.toLowerCase().trim();
   const exact = codes.get(lower);
   if (exact) return exact;
+
+  const isCommanderPrefixed = /^commander:\s*/i.test(setName);
+  const stripped = lower.replace(/^commander:\s*/i, "").trim();
+
+  let bestCode = "";
+  let bestScore = Infinity;
+
   for (const [sfName, sfCode] of codes) {
-    if (sfName.includes(lower) || lower.includes(sfName)) return sfCode;
+    const sfLower = sfName.toLowerCase();
+    let score = Infinity;
+
+    if (sfLower.includes(lower) || lower.includes(sfLower)) {
+      score = Math.abs(sfLower.length - lower.length);
+    } else if (stripped !== lower && (sfLower.includes(stripped) || stripped.includes(sfLower))) {
+      score = Math.abs(sfLower.length - stripped.length) + 10;
+    }
+
+    if (score < Infinity) {
+      if (isCommanderPrefixed && sfLower.includes("commander")) {
+        score -= 5;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        bestCode = sfCode;
+      }
+    }
   }
-  return "";
+
+  return bestCode;
 }
 
 function parsePullSheetCSV(
@@ -480,12 +505,17 @@ router.post("/tcgplayer/deduct-manapool", async (req, res): Promise<void> => {
 });
 
 // GET /api/tcgplayer/orders
-router.get("/tcgplayer/orders", async (_req, res): Promise<void> => {
-  const orders = await db
-    .select()
-    .from(tcgplayerOrdersTable)
-    .orderBy(desc(tcgplayerOrdersTable.date));
-  res.json(orders);
+router.get("/tcgplayer/orders", async (req, res): Promise<void> => {
+  try {
+    const orders = await db
+      .select()
+      .from(tcgplayerOrdersTable)
+      .orderBy(desc(tcgplayerOrdersTable.date));
+    res.json(orders);
+  } catch (err) {
+    req.log.error({ err }, "GET /tcgplayer/orders failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 // DELETE /api/tcgplayer/orders

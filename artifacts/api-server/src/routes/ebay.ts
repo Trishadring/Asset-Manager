@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, ebayOrdersTable, settingsTable, purchasesTable } from "@workspace/db";
-import { sql, eq, and, lt, like } from "drizzle-orm";
+import { sql, eq, like } from "drizzle-orm";
 
 const SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly",
@@ -315,12 +315,17 @@ router.post("/ebay/sync", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/ebay/orders", async (_req, res): Promise<void> => {
-  const orders = await db
-    .select()
-    .from(ebayOrdersTable)
-    .orderBy(sql`date DESC`);
-  res.json(orders);
+router.get("/ebay/orders", async (req, res): Promise<void> => {
+  try {
+    const orders = await db
+      .select()
+      .from(ebayOrdersTable)
+      .orderBy(sql`date DESC`);
+    res.json(orders);
+  } catch (err) {
+    req.log.error({ err }, "GET /ebay/orders failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 interface EbayShippingTransaction {

@@ -20,9 +20,11 @@ let oidcConfig: client.Configuration | null = null;
 
 export async function getOidcConfig(): Promise<client.Configuration> {
   if (!oidcConfig) {
+    const replId = process.env.REPL_ID;
+    if (!replId) throw new Error("REPL_ID environment variable is not set");
     oidcConfig = await client.discovery(
       new URL(ISSUER_URL),
-      process.env.REPL_ID!,
+      replId,
     );
   }
   return oidcConfig;

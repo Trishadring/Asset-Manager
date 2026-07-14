@@ -41,42 +41,47 @@ async function fetchOrderDetail(
   }
 }
 
-router.get("/orders", async (_req, res): Promise<void> => {
-  const rows = await db
-    .select()
-    .from(manapoolOrdersTable)
-    .orderBy(desc(manapoolOrdersTable.date));
-  res.json(rows);
+router.get("/orders", async (req, res): Promise<void> => {
+  try {
+    const rows = await db
+      .select()
+      .from(manapoolOrdersTable)
+      .orderBy(desc(manapoolOrdersTable.date))
+      .limit(500);
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "GET /orders failed");
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 router.post("/manapool/inspect", async (req, res): Promise<void> => {
-  let email: string, token: string;
   try {
-    ({ email, token } = getCredentials());
+    const { email, token } = getCredentials();
+
+    const headers = manapoolHeaders(email, token);
+    const listResp = await fetch(`${MANAPOOL_BASE}/seller/orders?limit=1&offset=0`, { headers });
+    if (!listResp.ok) {
+      res.status(listResp.status).json({ error: `Manapool list error: ${listResp.statusText}` });
+      return;
+    }
+    const listBody = (await listResp.json()) as { orders?: unknown[] };
+    const firstOrder = (listBody.orders ?? [])[0] as Record<string, unknown> | undefined;
+
+    if (!firstOrder) {
+      res.json({ message: "No orders found", listBody });
+      return;
+    }
+
+    const orderId = String(firstOrder.id ?? "");
+    const detail = orderId ? await fetchOrderDetail(orderId, email, token) : null;
+
+    req.log.info({ listOrderKeys: Object.keys(firstOrder), listOrder: firstOrder, detailKeys: detail ? Object.keys(detail) : [], detail }, "Manapool inspect result");
+    res.json({ listOrder: firstOrder, detail });
   } catch (err) {
+    req.log.error({ err }, "POST /manapool/inspect failed");
     res.status(500).json({ error: "Internal server error" });
-    return;
   }
-
-  const headers = manapoolHeaders(email, token);
-  const listResp = await fetch(`${MANAPOOL_BASE}/seller/orders?limit=1&offset=0`, { headers });
-  if (!listResp.ok) {
-    res.status(listResp.status).json({ error: `Manapool list error: ${listResp.statusText}` });
-    return;
-  }
-  const listBody = (await listResp.json()) as { orders?: unknown[] };
-  const firstOrder = (listBody.orders ?? [])[0] as Record<string, unknown> | undefined;
-
-  if (!firstOrder) {
-    res.json({ message: "No orders found", listBody });
-    return;
-  }
-
-  const orderId = String(firstOrder.id ?? "");
-  const detail = orderId ? await fetchOrderDetail(orderId, email, token) : null;
-
-  req.log.info({ listOrderKeys: Object.keys(firstOrder), listOrder: firstOrder, detailKeys: detail ? Object.keys(detail) : [], detail }, "Manapool inspect result");
-  res.json({ listOrder: firstOrder, detail });
 });
 
 router.post("/manapool/sync", async (req, res): Promise<void> => {
