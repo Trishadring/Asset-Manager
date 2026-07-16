@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, sql, max } from "drizzle-orm";
+import { desc, max, sql } from "drizzle-orm";
 import { db, manapoolOrdersTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 
@@ -98,16 +98,16 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
   const [latestRow] = await db
     .select({ latestDate: max(manapoolOrdersTable.date) })
     .from(manapoolOrdersTable);
-  const latestSyncedDate = latestRow?.latestDate
+  const cutoffDate = latestRow?.latestDate
     ? new Date(latestRow.latestDate)
-    : null;
+    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   let newOrders: Record<string, unknown>[] = [];
   let offset = 0;
   const limit = 100;
 
   try {
-    pagination: while (true) {
+    while (true) {
       const resp = await fetch(
         `${MANAPOOL_BASE}/seller/orders?limit=${limit}&offset=${offset}`,
         { headers },
@@ -121,17 +121,23 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
 
       if (pageOrders.length === 0) break;
 
-      // Manapool returns newest orders first; stop once we hit already-synced dates
-      if (latestSyncedDate) {
-        const allOld = pageOrders.every((o) => {
-          const d = o.created_at ? new Date(String(o.created_at)) : null;
-          return d && d <= latestSyncedDate!;
-        });
-        if (allOld) break pagination;
+      let reachedCutoff = false;
+      for (const order of pageOrders) {
+        const createdAt = order.created_at
+          ? new Date(String(order.created_at))
+          : null;
+        if (!createdAt || Number.isNaN(createdAt.getTime())) {
+          req.log.warn({ orderId: order.id }, "Manapool order has an invalid created_at");
+          continue;
+        }
+        if (createdAt < cutoffDate) {
+          reachedCutoff = true;
+          continue;
+        }
+        newOrders.push(order);
       }
 
-      newOrders.push(...pageOrders);
-      if (pageOrders.length < limit) break;
+      if (reachedCutoff || pageOrders.length < limit) break;
       offset += limit;
       if (offset > 5000) break;
     }
@@ -192,7 +198,7 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
     }
   }
 
-  req.log.info({ upserted, total: newOrders.length }, "Manapool sync complete");
+  req.log.info({ cutoffDate, upserted, total: newOrders.length }, "Manapool sync complete");
   res.json({
     message: `Synced ${newOrders.length} orders (${upserted} updated).`,
     upserted,
