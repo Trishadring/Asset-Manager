@@ -121,7 +121,6 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
 
       if (pageOrders.length === 0) break;
 
-      let reachedCutoff = false;
       for (const order of pageOrders) {
         const createdAt = order.created_at
           ? new Date(String(order.created_at))
@@ -130,14 +129,12 @@ router.post("/manapool/sync", async (req, res): Promise<void> => {
           req.log.warn({ orderId: order.id }, "Manapool order has an invalid created_at");
           continue;
         }
-        if (createdAt < cutoffDate) {
-          reachedCutoff = true;
-          continue;
+        if (createdAt > cutoffDate) {
+          newOrders.push(order);
         }
-        newOrders.push(order);
       }
 
-      if (reachedCutoff || pageOrders.length < limit) break;
+      if (pageOrders.length < limit) break;
       offset += limit;
       if (offset > 5000) break;
     }
