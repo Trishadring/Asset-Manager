@@ -191,7 +191,14 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       const [ordersRes] = await Promise.all([
         fetch("/api/manapick/orders"),
         fetch("/api/manapool/sync", { method: "POST" })
-          .then(() => queryClient.invalidateQueries({ queryKey: ["orders"] }))
+          .then(async (syncRes) => {
+            if (!syncRes.ok) throw new Error(`HTTP ${syncRes.status}`);
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["orders"] }),
+              queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+              queryClient.invalidateQueries({ queryKey: ["weekly"] }),
+            ]);
+          })
           .catch(() => console.warn("manapool sync failed")),
       ]);
 
@@ -409,7 +416,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       setEnrichProgress({ done: 0, total: 0 });
     }
-  }, []);
+  }, [queryClient]);
 
   const handleTcgFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
