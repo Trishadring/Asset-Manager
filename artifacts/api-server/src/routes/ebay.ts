@@ -173,7 +173,7 @@ router.get("/ebay/auth-url", (req, res): void => {
   const clientId = process.env["EBAY_CLIENT_ID"];
   const ruName = process.env["EBAY_RUNAME"];
   if (!clientId || !ruName) {
-    res.status(500).json({ error: "EBAY_CLIENT_ID or EBAY_RUNAME not configured" });
+    res.json({ url: null });
     return;
   }
   const url =
