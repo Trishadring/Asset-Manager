@@ -116,7 +116,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Cached orders omit addresses, so always refresh the full order data.
   useEffect(() => {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,14 +238,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
       try {
         const ts = Date.now();
-        const cachedOrders = rawOrders.map((o) => ({
-          ...o,
-          shipping_address: undefined,
-        }));
         localStorage.setItem(
           CACHE_KEY,
           JSON.stringify({
-            orders: cachedOrders,
+            orders: rawOrders,
             master: enrichedMaster,
             sets: rawSets,
             cachedAt: ts,
