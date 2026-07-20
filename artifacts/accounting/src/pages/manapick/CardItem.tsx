@@ -54,9 +54,6 @@ export function CardItem({
             : entry.finish === "etched"
               ? " 🔮"
               : ""}
-          {entry.source === "tcgplayer" && (
-            <span className="ml-1 text-blue-500 font-medium">TCG</span>
-          )}
         </p>
       </div>
 

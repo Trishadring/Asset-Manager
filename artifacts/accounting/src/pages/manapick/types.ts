@@ -20,7 +20,6 @@ export interface MasterEntry {
   scryfall_id?: string;
   allocations: Record<string, number>;
   scryfall?: ScryfallCard;
-  source?: "manapool" | "tcgplayer";
 }
 
 export interface ShippingAddress {
@@ -53,21 +52,9 @@ export interface Order {
   shipping_address?: ShippingAddress;
   shipping_method?: string;
   items?: OrderItem[];
-  source?: "manapool" | "tcgplayer";
 }
 
 export type Master = Record<string, MasterEntry>;
 export type SetsMap = Record<string, { name: string; released_at: string }>;
-
-export interface EbayPickLineItem {
-  title: string;
-  imageUrl: string | null;
-  quantity: number;
-}
-
-export interface EbayPickOrder {
-  id: string;
-  lineItems: EbayPickLineItem[];
-}
 
 export type Phase = "pick" | "pack";

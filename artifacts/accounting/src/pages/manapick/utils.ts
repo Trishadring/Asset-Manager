@@ -42,6 +42,29 @@ export function colorSortIndex(card?: ScryfallCard): number {
   );
 }
 
+const BASIC_LAND_NAMES = new Set([
+  "Plains",
+  "Island",
+  "Swamp",
+  "Mountain",
+  "Forest",
+  "Wastes",
+  "Snow-Covered Plains",
+  "Snow-Covered Island",
+  "Snow-Covered Swamp",
+  "Snow-Covered Mountain",
+  "Snow-Covered Forest",
+]);
+
+export function isBasicLand(entry: MasterEntry): boolean {
+  const typeLine = entry.scryfall?.type_line ?? "";
+  return (typeLine.includes("Basic") && typeLine.includes("Land")) || BASIC_LAND_NAMES.has(entry.name);
+}
+
+export function isToken(entry: MasterEntry): boolean {
+  return (entry.scryfall?.type_line ?? "").includes("Token");
+}
+
 export function parseCollectorNumber(cn: string): [number, string] {
   const m = String(cn).match(/(\d+)/);
   return m ? [parseInt(m[1]!), cn] : [0, cn];

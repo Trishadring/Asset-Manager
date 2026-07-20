@@ -74,19 +74,6 @@ describe("CardItem", () => {
     expect(onToggle).toHaveBeenCalledWith("Counterspell|mmq|71|nonfoil|order-1");
   });
 
-  it("shows TCGPlayer badge for tcgplayer source", () => {
-    render(
-      <CardItem
-        cardKey="key"
-        entry={{ ...baseEntry, source: "tcgplayer" }}
-        orderToBin={{}}
-        picked={{}}
-        onToggle={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("TCG")).toBeInTheDocument();
-  });
-
   it("renders card image when available", () => {
     render(
       <CardItem
