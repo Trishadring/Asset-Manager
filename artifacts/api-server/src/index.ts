@@ -21,5 +21,9 @@ app.listen(port, (err) => {
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  logger.info({
+    port,
+    hasManapool: !!(process.env["MANAPOOL_EMAIL"] && process.env["MANAPOOL_API_KEY"]),
+    hasSession: !!process.env["SESSION_SECRET"],
+  }, "Server listening");
 });
