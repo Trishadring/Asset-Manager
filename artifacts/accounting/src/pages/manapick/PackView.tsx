@@ -43,9 +43,6 @@ export function PackView({
                 — {o.shipping_address.name}
               </span>
             )}
-            {o.source === "tcgplayer" && (
-              <span className="text-blue-500 font-medium">TCGPlayer</span>
-            )}
             {shipped[o.id] && (
               <CheckCircle2 className="h-3 w-3 text-green-500 ml-auto" />
             )}
@@ -57,14 +54,9 @@ export function PackView({
         const oid = order.id;
         const binNum = orderToBin[oid];
         const addr = order.shipping_address ?? {};
-        const isTcg = order.source === "tcgplayer";
-        const cardCount = isTcg
-          ? Object.values(master)
-              .filter((e) => e.source === "tcgplayer")
-              .reduce((s, e) => s + (e.allocations[oid] ?? 0), 0)
-          : (order.items ?? [])
-              .filter((i) => i.product?.single)
-              .reduce((s, i) => s + (i.quantity ?? 1), 0);
+        const cardCount = (order.items ?? [])
+          .filter((i) => i.product?.single)
+          .reduce((s, i) => s + (i.quantity ?? 1), 0);
 
         const orderCards = Object.entries(master)
           .filter(([, e]) => (e.allocations[oid] ?? 0) > 0)
@@ -85,43 +77,29 @@ export function PackView({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold">Bin {binNum}</span>
-                  {isTcg && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
-                      TCGPlayer
-                    </span>
-                  )}
                 </div>
-                {!isTcg && (
-                  <>
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                      {order.label ?? oid.slice(0, 10)}
-                    </p>
-                    {addr.name && (
-                      <p className="text-sm font-medium mt-1">{addr.name}</p>
-                    )}
-                    {addr.line1 && (
-                      <p className="text-xs text-muted-foreground">
-                        {addr.line1}
-                        {addr.line2 ? `, ${addr.line2}` : ""}
-                      </p>
-                    )}
-                    {(addr.city || addr.state || addr.postal_code) && (
-                      <p className="text-xs text-muted-foreground">
-                        {[addr.city, addr.state, addr.postal_code]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </p>
-                    )}
-                    {order.shipping_method && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        via {order.shipping_method}
-                      </p>
-                    )}
-                  </>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                  {order.label ?? oid.slice(0, 10)}
+                </p>
+                {addr.name && (
+                  <p className="text-sm font-medium mt-1">{addr.name}</p>
                 )}
-                {isTcg && (
+                {addr.line1 && (
+                  <p className="text-xs text-muted-foreground">
+                    {addr.line1}
+                    {addr.line2 ? `, ${addr.line2}` : ""}
+                  </p>
+                )}
+                {(addr.city || addr.state || addr.postal_code) && (
+                  <p className="text-xs text-muted-foreground">
+                    {[addr.city, addr.state, addr.postal_code]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                )}
+                {order.shipping_method && (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Ship via your normal TCGPlayer process
+                    via {order.shipping_method}
                   </p>
                 )}
               </div>
@@ -170,34 +148,21 @@ export function PackView({
               </div>
             )}
 
-            {!isTcg && (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Tracking number (optional)"
-                  value={tracking[oid] ?? ""}
-                  onChange={(e) => onTrackingChange(oid, e.target.value)}
-                  className="h-8 text-xs"
-                />
-                <Button
-                  size="sm"
-                  className="h-8 shrink-0"
-                  onClick={() => onShip(oid)}
-                >
-                  Mark Shipped
-                </Button>
-              </div>
-            )}
-
-            {isTcg && (
+            <div className="flex gap-2">
+              <Input
+                placeholder="Tracking number (optional)"
+                value={tracking[oid] ?? ""}
+                onChange={(e) => onTrackingChange(oid, e.target.value)}
+                className="h-8 text-xs"
+              />
               <Button
                 size="sm"
-                variant="outline"
-                className="h-8"
+                className="h-8 shrink-0"
                 onClick={() => onShip(oid)}
               >
-                Mark Packed
+                Mark Shipped
               </Button>
-            )}
+            </div>
           </div>
         );
       })}

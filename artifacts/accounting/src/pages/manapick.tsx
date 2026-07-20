@@ -1,11 +1,9 @@
-import { Loader2, RefreshCw, Package, ShoppingBag, Upload, X, MinusCircle, Tag } from "lucide-react";
+import { Loader2, RefreshCw, Package, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
-import { EbaySection } from "./manapick/EbaySection";
-import { DeductDialog } from "./manapick/DeductDialog";
 import { OrdersProvider, useOrders } from "./manapick/OrdersProvider";
 
 export default function ManaPick() {
@@ -19,18 +17,12 @@ export default function ManaPick() {
 function ManaPickInner() {
   const {
     fetchOrders, loading, isEmpty, cachedAt,
-    tcgFileInputRef, handleTcgFile, tcgLoading, hasTcg,
-    handleDeductPreview, deductMutation, removeTcgCards,
-    fetchEbayOrders, ebayLoading, ebayOrders, clearAll,
-    error, tcgError, setTcgError, ebayError, setEbayError,
+    clearAll, error,
     isEnriching, enrichProgress,
     master, totalCards, pickedCards, orders,
     phase, setPhase,
     setGroups, orderToBin, picked, togglePick,
     shipped, tracking, shipOrder, handleTrackingChange,
-    ebayPacked, setEbayPacked,
-    deductDialogOpen, setDeductDialogOpen, deductPreview, handleDeductApply,
-    deductedSkus, tcgCards,
   } = useOrders();
 
   return (
@@ -40,8 +32,7 @@ function ManaPickInner() {
         <div>
           <h1 className="text-2xl font-bold">ManaPick</h1>
           <p className="text-sm text-muted-foreground">
-            Pick &amp; pack helper — Manapool + TCGPlayer, sorted by set, color,
-            and collector number
+            Pick &amp; pack Manapool orders, sorted by set, color, and collector number
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -65,83 +56,6 @@ function ManaPickInner() {
             </span>
           )}
 
-          {/* TCGPlayer pull sheet upload */}
-          <input
-            ref={tcgFileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleTcgFile}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => tcgFileInputRef.current?.click()}
-            disabled={tcgLoading}
-          >
-            {tcgLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            <span className="ml-1">
-              {tcgLoading
-                ? "Loading…"
-                : hasTcg
-                  ? "Replace TCGPlayer CSV"
-                  : "Add TCGPlayer CSV"}
-            </span>
-          </Button>
-
-          {hasTcg && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDeductPreview}
-                disabled={deductMutation.isPending}
-                className="text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-950/30"
-              >
-                {deductMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MinusCircle className="h-4 w-4" />
-                )}
-                <span className="ml-1">Deduct from Manapool</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={removeTcgCards}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-                <span className="ml-1">Remove TCG</span>
-              </Button>
-            </>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchEbayOrders}
-            disabled={ebayLoading}
-            className="text-purple-600 border-purple-300 hover:bg-purple-50 dark:text-purple-400 dark:border-purple-700 dark:hover:bg-purple-950/30"
-          >
-            {ebayLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Tag className="h-4 w-4" />
-            )}
-            <span className="ml-1">
-              {ebayLoading
-                ? "Loading…"
-                : ebayOrders.length > 0
-                  ? "Refresh eBay"
-                  : "Fetch eBay"}
-            </span>
-          </Button>
-
           {!isEmpty && (
             <Button variant="outline" size="sm" onClick={clearAll}>
               Clear All
@@ -156,29 +70,6 @@ function ManaPickInner() {
           {error}
         </div>
       )}
-      {tcgError && (
-        <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
-          <span>TCGPlayer: {tcgError}</span>
-          <button
-            onClick={() => setTcgError(null)}
-            className="ml-4 underline text-xs opacity-70 hover:opacity-100"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
-      {ebayError && (
-        <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm flex items-center justify-between">
-          <span>eBay: {ebayError}</span>
-          <button
-            onClick={() => setEbayError(null)}
-            className="ml-4 underline text-xs opacity-70 hover:opacity-100"
-          >
-            dismiss
-          </button>
-        </div>
-      )}
-
       {/* Enrichment progress */}
       {isEnriching && (
         <div className="space-y-1.5">
@@ -197,8 +88,7 @@ function ManaPickInner() {
           <ShoppingBag className="h-12 w-12 opacity-20" />
           <p className="text-sm text-center max-w-sm">
             Click <strong>Fetch Manapool</strong> to load your paid, unshipped
-            Manapool orders, or <strong>Add TCGPlayer CSV</strong> to load a
-            TCGPlayer pull sheet.
+            Manapool orders.
           </p>
         </div>
       )}
@@ -229,20 +119,6 @@ function ManaPickInner() {
               className="h-2"
             />
           )}
-
-          {/* Platform badges */}
-          <div className="flex gap-2 text-xs">
-            {orders.some((o) => o.source !== "tcgplayer") && (
-              <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 font-medium">
-                Manapool
-              </span>
-            )}
-            {hasTcg && (
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
-                TCGPlayer
-              </span>
-            )}
-          </div>
 
           {/* Phase toggle */}
           <div className="flex gap-2">
@@ -287,22 +163,6 @@ function ManaPickInner() {
         </>
       )}
 
-      {/* ── eBay Orders ──────────────────────────────────────────────────── */}
-      <EbaySection
-        orders={ebayOrders}
-        ebayPacked={ebayPacked}
-        setEbayPacked={setEbayPacked}
-      />
-
-      {/* ── Deduct from Manapool preview dialog ─────────────────────────── */}
-      <DeductDialog
-        open={deductDialogOpen}
-        onOpenChange={setDeductDialogOpen}
-        deductPreview={deductPreview}
-        isPending={deductMutation.isPending}
-        onApply={handleDeductApply}
-        skippedCount={tcgCards.filter((c) => c.tcgplayerSku !== null && deductedSkus.has(c.tcgplayerSku)).length}
-      />
     </div>
   );
 }

@@ -30,11 +30,6 @@ const baseOrders: Order[] = [
       },
     ],
   },
-  {
-    id: "order-2",
-    source: "tcgplayer",
-    items: [],
-  },
 ];
 
 const baseMaster: Master = {
@@ -55,7 +50,7 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={vi.fn()}
@@ -63,7 +58,6 @@ describe("PackView", () => {
       />,
     );
     expect(screen.getAllByText("Bin 1").length).toBe(2);
-    expect(screen.getAllByText("Bin 2").length).toBe(2);
   });
 
   it("renders shipping address", () => {
@@ -71,7 +65,7 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={vi.fn()}
@@ -89,7 +83,7 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={vi.fn()}
@@ -100,12 +94,12 @@ describe("PackView", () => {
     expect(alts.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows Mark Shipped button for non-TCG orders", () => {
+  it("shows Mark Shipped button", () => {
     render(
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={vi.fn()}
@@ -116,21 +110,6 @@ describe("PackView", () => {
     expect(buttons.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows Mark Packed button for TCG orders", () => {
-    render(
-      <PackView
-        orders={baseOrders}
-        master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
-        shipped={{}}
-        tracking={{}}
-        onShip={vi.fn()}
-        onTrackingChange={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("Mark Packed")).toBeInTheDocument();
-  });
-
   it("calls onShip when Mark Shipped clicked", async () => {
     const onShip = vi.fn();
     const user = userEvent.setup();
@@ -138,7 +117,7 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={onShip}
@@ -155,7 +134,7 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
+        orderToBin={{ "order-1": 1 }}
         shipped={{}}
         tracking={{}}
         onShip={vi.fn()}
@@ -172,8 +151,8 @@ describe("PackView", () => {
       <PackView
         orders={baseOrders}
         master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
-        shipped={{ "order-1": true, "order-2": true }}
+        orderToBin={{ "order-1": 1 }}
+        shipped={{ "order-1": true }}
         tracking={{}}
         onShip={vi.fn()}
         onTrackingChange={vi.fn()}
@@ -181,20 +160,5 @@ describe("PackView", () => {
     );
     expect(screen.getByText("All orders packed & shipped!")).toBeInTheDocument();
     expect(screen.queryByText("Mark Shipped")).toBeNull();
-  });
-
-  it("shows TCGPlayer badge for tcg orders in bin ref", () => {
-    render(
-      <PackView
-        orders={baseOrders}
-        master={baseMaster}
-        orderToBin={{ "order-1": 1, "order-2": 2 }}
-        shipped={{}}
-        tracking={{}}
-        onShip={vi.fn()}
-        onTrackingChange={vi.fn()}
-      />,
-    );
-    expect(screen.getAllByText("TCGPlayer").length).toBe(2);
   });
 });

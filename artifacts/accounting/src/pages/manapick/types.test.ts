@@ -4,6 +4,8 @@ import {
   cardImageFromData,
   entryImageUrl,
   colorSortIndex,
+  isBasicLand,
+  isToken,
   parseCollectorNumber,
   formatDate,
   formatRelativeTime,
@@ -164,6 +166,58 @@ describe("colorSortIndex", () => {
       };
       expect(colorSortIndex(card)).toBe(expected);
     }
+  });
+});
+
+describe("isBasicLand", () => {
+  const entry = (name: string, typeLine?: string): MasterEntry => ({
+    name,
+    set: "test",
+    collector_number: "1",
+    finish: "nonfoil",
+    quantity: 1,
+    allocations: {},
+    scryfall: typeLine
+      ? { id: "1", name, set: "test", collector_number: "1", type_line: typeLine }
+      : undefined,
+  });
+
+  it("recognizes basic lands from Scryfall type data", () => {
+    expect(isBasicLand(entry("Full-Art Forest", "Basic Land — Forest"))).toBe(true);
+  });
+
+  it("recognizes standard and snow-covered names without enrichment", () => {
+    expect(isBasicLand(entry("Island"))).toBe(true);
+    expect(isBasicLand(entry("Snow-Covered Mountain"))).toBe(true);
+    expect(isBasicLand(entry("Wastes"))).toBe(true);
+  });
+
+  it("does not classify nonbasic lands", () => {
+    expect(isBasicLand(entry("Command Tower", "Land"))).toBe(false);
+  });
+});
+
+describe("isToken", () => {
+  const entry = (typeLine?: string): MasterEntry => ({
+    name: "Goblin",
+    set: "tset",
+    collector_number: "1",
+    finish: "nonfoil",
+    quantity: 1,
+    allocations: {},
+    scryfall: typeLine
+      ? { id: "1", name: "Goblin", set: "tset", collector_number: "1", type_line: typeLine }
+      : undefined,
+  });
+
+  it("recognizes token card types", () => {
+    expect(isToken(entry("Token Creature — Goblin"))).toBe(true);
+    expect(isToken(entry("Token Artifact — Treasure"))).toBe(true);
+  });
+
+  it("does not classify regular cards", () => {
+    expect(isToken(entry("Creature — Goblin"))).toBe(false);
+    expect(isToken(entry())).toBe(false);
   });
 });
 

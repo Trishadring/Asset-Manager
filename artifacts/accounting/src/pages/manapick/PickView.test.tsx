@@ -64,7 +64,7 @@ describe("PickView", () => {
         onToggle={vi.fn()}
       />,
     );
-    expect(screen.getByText("MMQ")).toBeInTheDocument();
+    expect(screen.getByText(/^MMQ ·/)).toBeInTheDocument();
   });
 
   it("renders card items within each set", () => {
