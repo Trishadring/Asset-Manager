@@ -9,6 +9,7 @@ import ebayNotificationsRouter from "./ebay-notifications";
 import ebayRouter from "./ebay";
 import manapickRouter from "./manapick";
 import tcgplayerRouter from "./tcgplayer";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -37,5 +38,6 @@ router.use(salesRouter);
 router.use(ebayRouter);
 router.use(manapickRouter);
 router.use(tcgplayerRouter);
+router.use(settingsRouter);
 
 export default router;

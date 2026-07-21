@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { manapickPicksTable } from "@workspace/db";
+import { manapickPicksTable, settingsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { getScryfallSets } from "../lib/scryfall-sets";
 
@@ -19,9 +19,20 @@ const FINISH_LABELS: Record<string, string> = {
   EF: "etched",
 };
 
-function getCredentials() {
-  const email = process.env["MANAPOOL_EMAIL"] ?? "";
-  const token = process.env["MANAPOOL_API_KEY"] ?? "";
+async function getCredentials(): Promise<{ email: string; token: string }> {
+  const envEmail = process.env["MANAPOOL_EMAIL"] ?? "";
+  const envToken = process.env["MANAPOOL_API_KEY"] ?? "";
+  if (envEmail && envToken) return { email: envEmail, token: envToken };
+
+  // Fall back to DB-stored settings (set via the Settings page in the UI)
+  const rows = await db.select().from(settingsTable).where(
+    eq(settingsTable.key, "manapool_email"),
+  );
+  const tokenRows = await db.select().from(settingsTable).where(
+    eq(settingsTable.key, "manapool_api_key"),
+  );
+  const email = rows[0]?.value ?? "";
+  const token = tokenRows[0]?.value ?? "";
   if (!email || !token) throw new Error("MANAPOOL_EMAIL or MANAPOOL_API_KEY not configured.");
   return { email, token };
 }
@@ -146,7 +157,7 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
 
   let email: string, token: string;
   try {
-    ({ email, token } = getCredentials());
+    ({ email, token } = await getCredentials());
   } catch (err) {
     if (process.env["NODE_ENV"] !== "production") {
       req.log.info("no manapool credentials; returning placeholder orders");
@@ -154,7 +165,7 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       return;
     }
     logger.error(err, "manapick/orders getCredentials error");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Manapool credentials not configured. Go to Settings to enter your Manapool email and access token." });
     return;
   }
 
@@ -352,10 +363,10 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
 router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
   let email: string, token: string;
   try {
-    ({ email, token } = getCredentials());
+    ({ email, token } = await getCredentials());
   } catch (err) {
     logger.error(err, "manapick/orders/:id/ship getCredentials error");
-    res.status(500).json({ error: "Internal server error" }); return;
+    res.status(500).json({ error: "Manapool credentials not configured. Go to Settings to enter your Manapool email and access token." }); return;
   }
 
   const orderId = req.params["id"]!;
