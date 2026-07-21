@@ -1,10 +1,85 @@
-import { Loader2, RefreshCw, Package, ShoppingBag } from "lucide-react";
+import { useState } from "react";
+import { Loader2, RefreshCw, Package, ShoppingBag, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
 import { OrdersProvider, useOrders } from "./manapick/OrdersProvider";
+
+function ManaPoolCredentialsForm({ onSaved }: { onSaved: () => void }) {
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [token, setToken] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !token.trim()) {
+      toast({ title: "Both email and access token are required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await fetch("/api/settings/manapool", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), token: token.trim() }),
+      });
+      if (!r.ok) throw new Error("Save failed");
+      toast({ title: "Credentials saved — fetching orders…" });
+      onSaved();
+    } catch {
+      toast({ title: "Failed to save credentials", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border rounded-lg p-6 max-w-md space-y-4">
+      <div className="flex items-center gap-2">
+        <KeyRound size={18} className="text-muted-foreground" />
+        <h2 className="font-semibold">Manapool Credentials</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Enter your Manapool account email and access token to load orders.
+        The access token can be found in your Manapool seller account settings.
+      </p>
+      <form onSubmit={handleSave} className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="mp-email-inline">Email</Label>
+          <Input
+            id="mp-email-inline"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="mp-token-inline">Access Token</Label>
+          <Input
+            id="mp-token-inline"
+            type="password"
+            placeholder="Paste your access token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving…" : "Save & load orders"}
+        </Button>
+      </form>
+    </div>
+  );
+}
 
 export default function ManaPick() {
   return (
@@ -24,6 +99,8 @@ function ManaPickInner() {
     setGroups, orderToBin, picked, togglePick,
     shipped, tracking, shipOrder, handleTrackingChange,
   } = useOrders();
+
+  const credentialsMissing = !!error && error.toLowerCase().includes("not configured");
 
   return (
     <div className="space-y-6 max-w-screen-xl">
@@ -64,8 +141,13 @@ function ManaPickInner() {
         </div>
       </div>
 
-      {/* Errors */}
-      {error && (
+      {/* Credentials missing — show inline setup form */}
+      {credentialsMissing && (
+        <ManaPoolCredentialsForm onSaved={fetchOrders} />
+      )}
+
+      {/* Other errors */}
+      {error && !credentialsMissing && (
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm">
           {error}
         </div>
