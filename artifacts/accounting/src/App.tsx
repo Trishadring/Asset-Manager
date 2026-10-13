@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,7 +11,6 @@ import Purchases from "@/pages/purchases";
 import Orders from "@/pages/orders";
 import ManaPick from "@/pages/manapick";
 import Sales from "@/pages/sales";
-import Settings from "@/pages/settings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,7 +62,8 @@ function LoginGate({ children }: { children: React.ReactNode }) {
 }
 
 function Router() {
-  return (
+  const [location] = useLocation();
+  const pages = (
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
@@ -72,22 +72,22 @@ function Router() {
         <Route path="/orders" component={Orders} />
         <Route path="/sales" component={Sales} />
         <Route path="/manapick" component={ManaPick} />
-        <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
   );
+
+  if (location === "/manapick") return pages;
+  return <LoginGate>{pages}</LoginGate>;
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <LoginGate>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-        </LoginGate>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <Router />
+        </WouterRouter>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

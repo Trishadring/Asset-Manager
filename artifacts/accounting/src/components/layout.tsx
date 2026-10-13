@@ -5,7 +5,6 @@ import {
   ListOrdered,
   PackageSearch,
   HandCoins,
-  Settings,
 } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -63,18 +62,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="hidden md:block mt-auto mb-2 border-t border-sidebar-border" />
 
-          <Link
-            href="/settings"
-            data-testid="link-nav-settings"
-            className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              location === "/settings"
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-            }`}
-          >
-            <Settings size={18} className={location === "/settings" ? "text-primary" : "text-muted-foreground"} />
-            <span>Settings</span>
-          </Link>
         </nav>
       </aside>
       <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-y-auto">

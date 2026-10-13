@@ -1,6 +1,7 @@
 import * as oidc from "openid-client";
 import { type Request, type Response, type NextFunction } from "express";
 import type { AuthUser } from "@workspace/api-zod";
+import { isPublicManaPickRoute } from "../lib/public-manapick";
 import {
   clearSession,
   getOidcConfig,
@@ -61,6 +62,14 @@ export async function authMiddleware(
   req.isAuthenticated = function (this: Request) {
     return this.user != null;
   } as Request["isAuthenticated"];
+
+  // ManaPick validates a one-time Manapool key on its own public API routes.
+  // Skip session lookup here so those routes don't depend on a Replit session
+  // or the sessions table.
+  if (isPublicManaPickRoute(req.method, req.path)) {
+    next();
+    return;
+  }
 
   const sid = getSessionId(req);
   if (!sid) {

@@ -8,7 +8,6 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import type {
   Order,
@@ -22,7 +21,74 @@ import type { SetGroup } from "./PickView";
 
 type Phase = "pick" | "pack";
 
-const CACHE_KEY = "manapick-cache-v2";
+const LEGACY_CACHE_KEY = "manapick-cache-v2";
+const PICK_CACHE_KEY = "manapick-picks-v1";
+
+export interface ManaPoolCredentials {
+  email: string;
+  token: string;
+}
+
+function manapoolHeaders(credentials: ManaPoolCredentials): Record<string, string> {
+  return {
+    "X-ManaPool-Email": credentials.email,
+    "X-ManaPool-Access-Token": credentials.token,
+  };
+}
+
+function readSavedPicks(session: string): Record<string, boolean> {
+  if (!session) return {};
+  try {
+    const raw = localStorage.getItem(PICK_CACHE_KEY);
+    const allPicks = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const saved = allPicks[session];
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+    return Object.fromEntries(
+      Object.entries(saved as Record<string, unknown>).filter(
+        ([, value]) => typeof value === "boolean",
+      ),
+    ) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function writeSavedPicks(session: string, picks: Record<string, boolean>) {
+  if (!session) return;
+  try {
+    const raw = localStorage.getItem(PICK_CACHE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    const allPicks =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, Record<string, boolean>>)
+        : {};
+    allPicks[session] = picks;
+    localStorage.setItem(PICK_CACHE_KEY, JSON.stringify(allPicks));
+  } catch {
+    // Local storage may be unavailable or full.
+  }
+}
+
+function removeSavedPicks(session: string) {
+  if (!session) return;
+  try {
+    const raw = localStorage.getItem(PICK_CACHE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    delete (parsed as Record<string, unknown>)[session];
+    localStorage.setItem(PICK_CACHE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Local storage may be unavailable.
+  }
+}
+
+function clearLegacyOrderCache() {
+  try {
+    localStorage.removeItem(LEGACY_CACHE_KEY);
+  } catch {
+    // Local storage may be unavailable.
+  }
+}
 
 interface OrdersContextValue {
   orders: Order[];
@@ -59,8 +125,13 @@ export function useOrders(): OrdersContextValue {
   return ctx;
 }
 
-export function OrdersProvider({ children }: { children: ReactNode }) {
-  const queryClient = useQueryClient();
+export function OrdersProvider({
+  children,
+  credentials,
+}: {
+  children: ReactNode;
+  credentials: ManaPoolCredentials;
+}) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [master, setMaster] = useState<Master>({});
   const [sets, setSets] = useState<SetsMap>({});
@@ -78,48 +149,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   });
   const [error, setError] = useState<string | null>(null);
   const sessionIdRef = useRef("");
-
-  // Restore from localStorage cache on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CACHE_KEY);
-      if (!raw) return;
-      const cached = JSON.parse(raw) as {
-        orders: Order[];
-        master: Master;
-        sets: SetsMap;
-        cachedAt: number;
-      };
-      if (!Array.isArray(cached.orders) || !cached.master) return;
-
-      const binMap: Record<string, number> = {};
-      cached.orders.forEach((o, i) => {
-        binMap[o.id] = i + 1;
-      });
-      const sid = [...cached.orders.map((o) => o.id)].sort().join("|");
-
-      setOrders(cached.orders);
-      setMaster(cached.master);
-      setSets(cached.sets ?? {});
-      setOrderToBin(binMap);
-      setSessionId(sid);
-      sessionIdRef.current = sid;
-      setCachedAt(cached.cachedAt);
-      if (sid) {
-        fetch(`/api/manapick/picks?session=${encodeURIComponent(sid)}`)
-          .then((r) => (r.ok ? r.json() : { picks: {} }))
-          .then(({ picks }) => setPicked(picks ?? {}))
-          .catch(() => console.warn("failed to load picks"));
-      }
-    } catch {
-      // corrupt cache — ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const pickedRef = useRef<Record<string, boolean>>({});
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -127,19 +157,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setEnrichProgress({ done: 0, total: 0 });
 
     try {
-      const [ordersRes] = await Promise.all([
-        fetch("/api/manapick/orders"),
-        fetch("/api/manapool/sync", { method: "POST" })
-          .then(async (syncRes) => {
-            if (!syncRes.ok) throw new Error(`HTTP ${syncRes.status}`);
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: ["orders"] }),
-              queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-              queryClient.invalidateQueries({ queryKey: ["weekly"] }),
-            ]);
-          })
-          .catch(() => console.warn("manapool sync failed")),
-      ]);
+      const ordersRes = await fetch("/api/manapick/orders", {
+        cache: "no-store",
+        headers: manapoolHeaders(credentials),
+      });
 
       if (!ordersRes.ok) {
         const body = (await ordersRes.json().catch(() => ({}))) as {
@@ -163,6 +184,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       const sid = [...rawOrders.map((o) => o.id)].sort().join("|");
       setSessionId(sid);
       sessionIdRef.current = sid;
+      const savedPicks = readSavedPicks(sid);
+      pickedRef.current = savedPicks;
+      setPicked(savedPicks);
+      setCachedAt(Date.now());
 
       setOrders(rawOrders);
       setMaster(rawMaster);
@@ -170,22 +195,6 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       setOrderToBin(binMap);
       setShipped({});
       setLoading(false);
-
-      try {
-        const picksRes = await fetch(
-          `/api/manapick/picks?session=${encodeURIComponent(sid)}`,
-        );
-        if (picksRes.ok) {
-          const { picks: savedPicks } = (await picksRes.json()) as {
-            picks: Record<string, boolean>;
-          };
-          setPicked(savedPicks);
-        } else {
-          setPicked({});
-        }
-      } catch {
-        setPicked({});
-      }
 
       const cardKeys = Object.keys(rawMaster);
       if (cardKeys.length === 0) return;
@@ -235,65 +244,23 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       }
       setMaster(enrichedMaster);
       setEnrichProgress({ done: 0, total: 0 });
-
-      try {
-        const ts = Date.now();
-        localStorage.setItem(
-          CACHE_KEY,
-          JSON.stringify({
-            orders: rawOrders,
-            master: enrichedMaster,
-            sets: rawSets,
-            cachedAt: ts,
-          }),
-        );
-        setCachedAt(ts);
-      } catch {
-        // quota exceeded or unavailable — ignore
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
       setEnrichProgress({ done: 0, total: 0 });
     }
-  }, [queryClient]);
+  }, [credentials]);
+
+  useEffect(() => {
+    void fetchOrders();
+  }, [fetchOrders]);
 
   const togglePick = useCallback((pk: string) => {
-    setPicked((prev) => {
-      const newVal = !prev[pk];
-      const sid = sessionIdRef.current;
-      if (sid) {
-        fetch("/api/manapick/picks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session: sid, pickKey: pk, picked: newVal }),
-        }).catch(() => console.warn("failed to save pick"));
-      }
-      return { ...prev, [pk]: newVal };
-    });
+    const nextPicks = { ...pickedRef.current, [pk]: !pickedRef.current[pk] };
+    pickedRef.current = nextPicks;
+    setPicked(nextPicks);
+    writeSavedPicks(sessionIdRef.current, nextPicks);
   }, []);
-
-  // Cross-device sync
-  useEffect(() => {
-    const sid = sessionId;
-    if (!sid || phase !== "pick") return;
-    const interval = setInterval(async () => {
-      try {
-        const r = await fetch(
-          `/api/manapick/picks?session=${encodeURIComponent(sid)}`,
-        );
-        if (r.ok) {
-          const { picks } = (await r.json()) as {
-            picks: Record<string, boolean>;
-          };
-          setPicked(picks);
-        }
-      } catch {
-        /* ignore */
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [sessionId, phase]);
 
   const { totalCards, pickedCards } = useMemo(() => {
     let total = 0,
@@ -370,7 +337,10 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     try {
       const r = await fetch(`/api/manapick/orders/${oid}/ship`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...manapoolHeaders(credentials),
+        },
         body: JSON.stringify({ tracking_number: tn }),
       });
       if (!r.ok) {
@@ -390,13 +360,18 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAll = useCallback(() => {
+    removeSavedPicks(sessionIdRef.current);
+    sessionIdRef.current = "";
+    pickedRef.current = {};
+    setSessionId("");
     setOrders([]);
     setMaster({});
     setPicked({});
     setShipped({});
     setOrderToBin({});
     setCachedAt(null);
-    localStorage.removeItem(CACHE_KEY);
+    setTracking({});
+    clearLegacyOrderCache();
   }, []);
 
   const value: OrdersContextValue = {

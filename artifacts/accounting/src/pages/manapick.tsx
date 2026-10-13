@@ -1,43 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, Package, ShoppingBag, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/hooks/use-toast";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
-import { OrdersProvider, useOrders } from "./manapick/OrdersProvider";
+import {
+  OrdersProvider,
+  useOrders,
+  type ManaPoolCredentials,
+} from "./manapick/OrdersProvider";
 
-function ManaPoolCredentialsForm({ onSaved }: { onSaved: () => void }) {
-  const { toast } = useToast();
+function ManaPoolCredentialsForm({
+  onContinue,
+}: {
+  onContinue: (credentials: ManaPoolCredentials) => void;
+}) {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !token.trim()) {
-      toast({ title: "Both email and access token are required", variant: "destructive" });
-      return;
-    }
-    setSaving(true);
-    try {
-      const r = await fetch("/api/settings/manapool", {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), token: token.trim() }),
-      });
-      if (!r.ok) throw new Error("Save failed");
-      toast({ title: "Credentials saved — fetching orders…" });
-      onSaved();
-    } catch {
-      toast({ title: "Failed to save credentials", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    const trimmedEmail = email.trim();
+    const trimmedToken = token.trim();
+    if (!trimmedEmail || !trimmedToken) return;
+    onContinue({ email: trimmedEmail, token: trimmedToken });
   }
 
   return (
@@ -47,10 +36,11 @@ function ManaPoolCredentialsForm({ onSaved }: { onSaved: () => void }) {
         <h2 className="font-semibold">Manapool Credentials</h2>
       </div>
       <p className="text-sm text-muted-foreground">
-        Enter your Manapool account email and access token to load orders.
-        The access token can be found in your Manapool seller account settings.
+        Enter your Manapool account email and app key each time you open ManaPick.
+        This form does not save them; you will need to enter them again after
+        leaving or reloading the page.
       </p>
-      <form onSubmit={handleSave} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div className="space-y-1.5">
           <Label htmlFor="mp-email-inline">Email</Label>
           <Input
@@ -60,21 +50,23 @@ function ManaPoolCredentialsForm({ onSaved }: { onSaved: () => void }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="off"
+            required
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="mp-token-inline">Access Token</Label>
+          <Label htmlFor="mp-token-inline">Manapool App Key</Label>
           <Input
             id="mp-token-inline"
             type="password"
-            placeholder="Paste your access token"
+            placeholder="Paste your Manapool app key"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             autoComplete="off"
+            required
           />
         </div>
-        <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save & load orders"}
+        <Button type="submit">
+          Continue to ManaPick
         </Button>
       </form>
     </div>
@@ -82,14 +74,38 @@ function ManaPoolCredentialsForm({ onSaved }: { onSaved: () => void }) {
 }
 
 export default function ManaPick() {
+  const [credentials, setCredentials] = useState<ManaPoolCredentials | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem("manapick-cache-v2");
+    } catch {
+      // Local storage may be unavailable.
+    }
+  }, []);
+
+  if (!credentials) {
+    return (
+      <div className="space-y-6 max-w-screen-xl">
+        <div>
+          <h1 className="text-2xl font-bold">ManaPick</h1>
+          <p className="text-sm text-muted-foreground">
+            Pick and pack Manapool orders without Replit sign-in.
+          </p>
+        </div>
+        <ManaPoolCredentialsForm onContinue={setCredentials} />
+      </div>
+    );
+  }
+
   return (
-    <OrdersProvider>
-      <ManaPickInner />
+    <OrdersProvider credentials={credentials}>
+      <ManaPickInner onChangeCredentials={() => setCredentials(null)} />
     </OrdersProvider>
   );
 }
 
-function ManaPickInner() {
+function ManaPickInner({ onChangeCredentials }: { onChangeCredentials: () => void }) {
   const {
     fetchOrders, loading, isEmpty, cachedAt,
     clearAll, error,
@@ -99,8 +115,6 @@ function ManaPickInner() {
     setGroups, orderToBin, picked, togglePick,
     shipped, tracking, shipOrder, handleTrackingChange,
   } = useOrders();
-
-  const credentialsMissing = !!error && error.toLowerCase().includes("not configured");
 
   return (
     <div className="space-y-6 max-w-screen-xl">
@@ -127,6 +141,10 @@ function ManaPickInner() {
                   : "Refresh Manapool"}
             </span>
           </Button>
+          <Button variant="outline" size="sm" onClick={onChangeCredentials}>
+            <KeyRound className="h-4 w-4 mr-1" />
+            Change Manapool key
+          </Button>
           {cachedAt !== null && !loading && (
             <span className="text-xs text-muted-foreground">
               Synced {formatRelativeTime(cachedAt)}
@@ -141,13 +159,7 @@ function ManaPickInner() {
         </div>
       </div>
 
-      {/* Credentials missing — show inline setup form */}
-      {credentialsMissing && (
-        <ManaPoolCredentialsForm onSaved={fetchOrders} />
-      )}
-
-      {/* Other errors */}
-      {error && !credentialsMissing && (
+      {error && (
         <div className="rounded-md bg-destructive/10 text-destructive border border-destructive/20 px-4 py-3 text-sm">
           {error}
         </div>
