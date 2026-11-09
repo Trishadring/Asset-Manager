@@ -1,7 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { PackageSearch } from "lucide-react";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({
+  children,
+  sidebarContent,
+}: {
+  children: React.ReactNode;
+  sidebarContent?: React.ReactNode;
+}) {
   const [location] = useLocation();
 
   const isManaPickActive = location === "/" || location === "/manapick";
@@ -35,6 +41,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </Link>
 
         </nav>
+        {sidebarContent && (
+          <div className="px-4 pb-5 pt-3 md:mt-auto">
+            {sidebarContent}
+          </div>
+        )}
       </aside>
       <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-y-auto">
         <div className="p-6 md:p-8 flex-1 w-full max-w-6xl mx-auto">

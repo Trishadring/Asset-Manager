@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Loader2, RefreshCw, Package, ShoppingBag, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
@@ -13,68 +11,17 @@ import {
   type ManaPoolCredentials,
 } from "./manapick/OrdersProvider";
 
-function ManaPoolCredentialsForm({
-  onContinue,
-}: {
-  onContinue: (credentials: ManaPoolCredentials) => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmedEmail = email.trim();
-    const trimmedToken = token.trim();
-    if (!trimmedEmail || !trimmedToken) return;
-    onContinue({ email: trimmedEmail, token: trimmedToken });
-  }
-
-  return (
-    <div className="border rounded-lg p-6 max-w-md space-y-4">
-      <div className="flex items-center gap-2">
-        <KeyRound size={18} className="text-muted-foreground" />
-        <h2 className="font-semibold">Manapool Credentials</h2>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Enter your Manapool account email and app key each time you open ManaPick.
-        This form does not save them; you will need to enter them again after
-        leaving or reloading the page.
-      </p>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="mp-email-inline">Email</Label>
-          <Input
-            id="mp-email-inline"
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="off"
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="mp-token-inline">Manapool App Key</Label>
-          <Input
-            id="mp-token-inline"
-            type="password"
-            placeholder="Paste your Manapool app key"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            autoComplete="off"
-            required
-          />
-        </div>
-        <Button type="submit">
-          Continue to ManaPick
-        </Button>
-      </form>
-    </div>
-  );
+interface ManaPickProps {
+  credentials: ManaPoolCredentials | null;
+  onOpenCredentials: () => void;
+  onChangeCredentials: () => void;
 }
 
-export default function ManaPick() {
-  const [credentials, setCredentials] = useState<ManaPoolCredentials | null>(null);
+export default function ManaPick({
+  credentials,
+  onOpenCredentials,
+  onChangeCredentials,
+}: ManaPickProps) {
 
   useEffect(() => {
     try {
@@ -93,14 +40,32 @@ export default function ManaPick() {
             Pick and pack Manapool orders without Replit sign-in.
           </p>
         </div>
-        <ManaPoolCredentialsForm onContinue={setCredentials} />
+        <div className="max-w-xl rounded-xl border bg-card p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <KeyRound size={19} />
+            </div>
+            <div className="space-y-1">
+              <h2 className="font-semibold">Connect your Manapool account</h2>
+              <p className="text-sm text-muted-foreground">
+                Open <strong>Manapool key</strong> in the sidebar to enter your email
+                and app key. The key stays masked and is cleared when you leave or
+                reload this page.
+              </p>
+            </div>
+          </div>
+          <Button className="mt-5" onClick={onOpenCredentials}>
+            <KeyRound className="mr-2 h-4 w-4" />
+            Enter credentials
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
     <OrdersProvider credentials={credentials}>
-      <ManaPickInner onChangeCredentials={() => setCredentials(null)} />
+      <ManaPickInner onChangeCredentials={onChangeCredentials} />
     </OrdersProvider>
   );
 }

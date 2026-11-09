@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -5,7 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import { Layout } from "@/components/layout";
+import { ManapoolKeyPanel } from "@/components/manapool-key-panel";
 import ManaPick from "@/pages/manapick";
+import type { ManaPoolCredentials } from "@/pages/manapick/OrdersProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,9 +29,38 @@ function Router() {
 }
 
 function ManaPickPage() {
+  const [credentials, setCredentials] = useState<ManaPoolCredentials | null>(null);
+  const [keyPanelOpen, setKeyPanelOpen] = useState(false);
+
+  function openKeyPanel() {
+    setKeyPanelOpen(true);
+  }
+
+  function changeCredentials() {
+    setCredentials(null);
+    setKeyPanelOpen(true);
+  }
+
   return (
-    <Layout>
-      <ManaPick />
+    <Layout
+      sidebarContent={
+        <ManapoolKeyPanel
+          credentials={credentials}
+          open={keyPanelOpen}
+          onOpenChange={setKeyPanelOpen}
+          onSave={(nextCredentials) => {
+            setCredentials(nextCredentials);
+            setKeyPanelOpen(false);
+          }}
+          onClear={() => setCredentials(null)}
+        />
+      }
+    >
+      <ManaPick
+        credentials={credentials}
+        onOpenCredentials={openKeyPanel}
+        onChangeCredentials={changeCredentials}
+      />
     </Layout>
   );
 }
