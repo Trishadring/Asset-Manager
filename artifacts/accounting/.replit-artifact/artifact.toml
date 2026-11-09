@@ -1,5 +1,5 @@
 kind = "web"
-previewPath = "/accounting/"
+previewPath = "/"
 title = "ManaPick"
 version = "1.0.0"
 id = "artifacts/accounting"
@@ -11,7 +11,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = [ "/accounting/" ]
+paths = [ "/" ]
 localPort = 24339
 
 [services.development]
@@ -28,4 +28,4 @@ to = "/index.html"
 
 [services.env]
 PORT = "24339"
-BASE_PATH = "/accounting/"
+BASE_PATH = "/"

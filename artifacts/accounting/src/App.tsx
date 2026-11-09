@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
+import { Layout } from "@/components/layout";
 import ManaPick from "@/pages/manapick";
 
 const queryClient = new QueryClient({
@@ -17,10 +18,18 @@ const queryClient = new QueryClient({
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={ManaPick} />
-      <Route path="/manapick" component={ManaPick} />
+      <Route path="/" component={ManaPickPage} />
+      <Route path="/manapick" component={ManaPickPage} />
       <Route component={NotFound} />
     </Switch>
+  );
+}
+
+function ManaPickPage() {
+  return (
+    <Layout>
+      <ManaPick />
+    </Layout>
   );
 }
 
