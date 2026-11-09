@@ -1,1 +1,1 @@
-- [Static artifact deep links](static-artifact-deep-links.md) — when artifact-level rewrites don't route nested production URLs, try a path-scoped root `.replit` rewrite.
+- [Static artifact deep links](static-artifact-deep-links.md) — use per-artifact production rewrites for SPA deep links in pnpm workspaces.

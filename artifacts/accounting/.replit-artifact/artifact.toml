@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/accounting/"
-title = "TCG Accounting"
+title = "ManaPick"
 version = "1.0.0"
 id = "artifacts/accounting"
 router = "path"

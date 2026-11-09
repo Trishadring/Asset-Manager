@@ -14,10 +14,6 @@ run = [
   "true",
 ]
 
-[[deployment.rewrites]]
-from = "/accounting/*"
-to = "/accounting/index.html"
-
 [workflows]
 runButton = "Project"
 
