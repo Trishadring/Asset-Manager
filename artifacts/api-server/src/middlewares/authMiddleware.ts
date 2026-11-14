@@ -63,9 +63,8 @@ export async function authMiddleware(
     return this.user != null;
   } as Request["isAuthenticated"];
 
-  // ManaPick validates a one-time Manapool key on its own public API routes.
-  // Skip session lookup here so those routes don't depend on a Replit session
-  // or the sessions table.
+  // ManaPick's public routes use their own short-lived Manapool OAuth session.
+  // Skip Replit session lookup so ManaPick does not require Replit sign-in.
   if (isPublicManaPickRoute(req.method, req.path)) {
     next();
     return;

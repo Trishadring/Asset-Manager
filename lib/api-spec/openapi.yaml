@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: Auth
     description: Browser and mobile authentication endpoints.
+  - name: ManaPick
+    description: ManaPick seller connection and order operations.
 paths:
   /healthz:
     get:
@@ -26,6 +28,163 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /manapick/oauth/status:
+    get:
+      operationId: getManapickConnectionStatus
+      tags: [ManaPick]
+      summary: Get the current Manapool connection status
+      responses:
+        "200":
+          description: Connection status for this browser session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickConnectionStatus"
+  /manapick/oauth/start:
+    get:
+      operationId: beginManapickOAuth
+      tags: [ManaPick]
+      summary: Start the Manapool OAuth authorization flow
+      responses:
+        "302":
+          description: Redirect to Mana Pool authorization.
+  /manapick/oauth/callback:
+    get:
+      operationId: completeManapickOAuth
+      tags: [ManaPick]
+      summary: Complete the Manapool OAuth authorization flow
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect back to ManaPick with connection status.
+  /manapick/oauth/disconnect:
+    post:
+      operationId: disconnectManapick
+      tags: [ManaPick]
+      summary: Disconnect this browser's Manapool session
+      security:
+        - ManaPoolSession: []
+      responses:
+        "200":
+          description: Connection cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickConnectionStatus"
+  /manapick/sets:
+    get:
+      operationId: getManapickSets
+      tags: [ManaPick]
+      summary: Get card sets used by ManaPick
+      responses:
+        "200":
+          description: Scryfall set data used for order sorting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickSetsResponse"
+  /manapick/enrich:
+    post:
+      operationId: enrichManapickCards
+      tags: [ManaPick]
+      summary: Look up card details through Scryfall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManaPickEnrichInput"
+      responses:
+        "200":
+          description: Matched card details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickEnrichResponse"
+        "400":
+          description: Invalid card lookup input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /manapick/orders:
+    get:
+      operationId: getManapickOrders
+      tags: [ManaPick]
+      summary: Fetch paid, unshipped Manapool orders
+      security:
+        - ManaPoolSession: []
+      responses:
+        "200":
+          description: Orders and card grouping data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickOrdersResponse"
+        "401":
+          description: This browser session is not connected to Manapool.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /manapick/orders/{id}/ship:
+    post:
+      operationId: shipManapickOrder
+      tags: [ManaPick]
+      summary: Mark a Manapool order as shipped
+      security:
+        - ManaPoolSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManaPickShipInput"
+      responses:
+        "200":
+          description: Order marked as shipped.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManaPickShipSuccess"
+        "401":
+          description: This browser session is not connected to Manapool.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Manapool could not update the order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /auth/user:
     get:
       tags: [Auth]
@@ -143,6 +302,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/LogoutSuccess'
 components:
+  securitySchemes:
+    ManaPoolSession:
+      type: apiKey
+      in: cookie
+      name: manapick_sid
   parameters:
     AuthorizationSessionHeader:
       name: Authorization
@@ -166,6 +330,92 @@ components:
           type: string
       required:
         - status
+    ManaPickConnectionStatus:
+      type: object
+      required: [connected, scopes, expiresAt]
+      properties:
+        connected:
+          type: boolean
+        scopes:
+          type: array
+          items:
+            type: string
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+    ManaPickOrdersResponse:
+      type: object
+      required: [orders, master, sets]
+      properties:
+        orders:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        master:
+          type: object
+          additionalProperties: true
+        sets:
+          type: object
+          additionalProperties: true
+    ManaPickSetsResponse:
+      type: object
+      required: [sets]
+      properties:
+        sets:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ManaPickSetInfo"
+    ManaPickSetInfo:
+      type: object
+      required: [name, released_at]
+      properties:
+        name:
+          type: string
+        released_at:
+          type: string
+    ManaPickEnrichIdentifier:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        scryfall_id:
+          type: string
+        set:
+          type: string
+        collector_number:
+          type: string
+        name:
+          type: string
+    ManaPickEnrichInput:
+      type: object
+      required: [identifiers]
+      properties:
+        identifiers:
+          type: array
+          maxItems: 75
+          items:
+            $ref: "#/components/schemas/ManaPickEnrichIdentifier"
+    ManaPickEnrichResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: object
+          additionalProperties: true
+    ManaPickShipInput:
+      type: object
+      properties:
+        tracking_number:
+          type: string
+    ManaPickShipSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
     AuthUser:
       type: object
       required: [id, email, firstName, lastName, profileImageUrl]

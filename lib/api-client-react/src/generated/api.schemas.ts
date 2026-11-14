@@ -9,6 +9,64 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface ManaPickConnectionStatus {
+  connected: boolean;
+  scopes: string[];
+  /** @nullable */
+  expiresAt: string | null;
+}
+
+export type ManaPickOrdersResponseOrdersItem = { [key: string]: unknown };
+
+export type ManaPickOrdersResponseMaster = { [key: string]: unknown };
+
+export type ManaPickOrdersResponseSets = { [key: string]: unknown };
+
+export interface ManaPickOrdersResponse {
+  orders: ManaPickOrdersResponseOrdersItem[];
+  master: ManaPickOrdersResponseMaster;
+  sets: ManaPickOrdersResponseSets;
+}
+
+export interface ManaPickSetInfo {
+  name: string;
+  released_at: string;
+}
+
+export type ManaPickSetsResponseSets = { [key: string]: ManaPickSetInfo };
+
+export interface ManaPickSetsResponse {
+  sets: ManaPickSetsResponseSets;
+}
+
+export interface ManaPickEnrichIdentifier {
+  key: string;
+  scryfall_id?: string;
+  set?: string;
+  collector_number?: string;
+  name?: string;
+}
+
+export interface ManaPickEnrichInput {
+  /** @maxItems 75 */
+  identifiers: ManaPickEnrichIdentifier[];
+}
+
+export type ManaPickEnrichResponseResults = { [key: string]: unknown };
+
+export interface ManaPickEnrichResponse {
+  results: ManaPickEnrichResponseResults;
+}
+
+export interface ManaPickShipInput {
+  tracking_number?: string;
+}
+
+export const ManaPickShipSuccessValue = {
+  success: true,
+} as const;
+export type ManaPickShipSuccess = typeof ManaPickShipSuccessValue;
+
 export interface AuthUser {
   id: string;
   /** @nullable */
@@ -55,6 +113,13 @@ export interface ErrorEnvelope {
  * Opaque session token — `Bearer <sid>`.
  */
 export type AuthorizationSessionHeaderParameter = string;
+
+export type CompleteManapickOAuthParams = {
+  code?: string;
+  state?: string;
+  error?: string;
+  error_description?: string;
+};
 
 export type BeginBrowserLoginParams = {
   /**

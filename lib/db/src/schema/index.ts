@@ -6,3 +6,4 @@ export * from "./tcgplayer_orders";
 export * from "./settings";
 export * from "./auth";
 export * from "./manapick_picks";
+export * from "./manapool_oauth_connections";

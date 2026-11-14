@@ -101,7 +101,7 @@ overrides:
   postcss: '>=8.5.10'
   qs: '>=6.15.2'
   markdown-it: '>=14.2.0'
-  js-yaml: '>=4.2.0'
+  js-yaml: '>=4.3.2 <5'
   '@babel/core': '>=7.29.6'
   brace-expansion: '>=2.1.0'
   yaml: '>=2.8.3'
@@ -2674,8 +2674,8 @@ packages:
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
-  js-yaml@5.2.1:
-    resolution: {integrity: sha512-zfLtNfQqxVqq3uaTqSkh4x4hZw3KHobGUA0fJUj4wawW8bsQLTVqpHdXSIzidh7o+4lEW36tANuAGdaFx6Zgnw==}
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
   jsdom@26.1.0:
@@ -5696,7 +5696,7 @@ snapshots:
 
   js-tokens@9.0.1: {}
 
-  js-yaml@5.2.1:
+  js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
 
@@ -5901,7 +5901,7 @@ snapshots:
       find-up: 8.0.0
       fs-extra: 11.3.4
       jiti: 2.6.1
-      js-yaml: 5.2.1
+      js-yaml: 4.3.2
       remeda: 2.33.6
       string-argv: 0.3.2
       tsconfck: 3.1.6(typescript@5.9.3)

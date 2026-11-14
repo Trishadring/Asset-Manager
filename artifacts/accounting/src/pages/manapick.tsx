@@ -5,24 +5,23 @@ import { Progress } from "@/components/ui/progress";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
-import {
-  OrdersProvider,
-  useOrders,
-  type ManaPoolCredentials,
-} from "./manapick/OrdersProvider";
+import { OrdersProvider, useOrders } from "./manapick/OrdersProvider";
 
 interface ManaPickProps {
-  credentials: ManaPoolCredentials | null;
-  onOpenCredentials: () => void;
-  onChangeCredentials: () => void;
+  connected: boolean;
+  checking: boolean;
+  connectionError: string | null;
+  onDisconnect: () => void;
+  onAccessExpired: () => void;
 }
 
 export default function ManaPick({
-  credentials,
-  onOpenCredentials,
-  onChangeCredentials,
+  connected,
+  checking,
+  connectionError,
+  onDisconnect,
+  onAccessExpired,
 }: ManaPickProps) {
-
   useEffect(() => {
     try {
       localStorage.removeItem("manapick-cache-v2");
@@ -31,9 +30,26 @@ export default function ManaPick({
     }
   }, []);
 
-  if (!credentials) {
+  if (checking) {
+    return (
+      <div className="flex min-h-56 items-center gap-3 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span>Checking Manapool connection…</span>
+      </div>
+    );
+  }
+
+  if (!connected) {
     return (
       <div className="space-y-6 max-w-screen-xl">
+        {connectionError && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {connectionError}
+          </div>
+        )}
         <div>
           <h1 className="text-2xl font-bold">ManaPick</h1>
           <p className="text-sm text-muted-foreground">
@@ -48,15 +64,17 @@ export default function ManaPick({
             <div className="space-y-1">
               <h2 className="font-semibold">Connect your Manapool account</h2>
               <p className="text-sm text-muted-foreground">
-                Open <strong>Manapool key</strong> in the sidebar to enter your email
-                and app key. The key stays masked and is cleared when you leave or
-                reload this page.
+                Authorize ManaPick to read your seller orders and mark them shipped.
+                The connection lasts for this browser session or until the access
+                token expires.
               </p>
             </div>
           </div>
-          <Button className="mt-5" onClick={onOpenCredentials}>
+          <Button asChild className="mt-5">
+            <a href="/api/manapick/oauth/start">
             <KeyRound className="mr-2 h-4 w-4" />
-            Enter credentials
+              Connect with Manapool
+            </a>
           </Button>
         </div>
       </div>
@@ -64,13 +82,13 @@ export default function ManaPick({
   }
 
   return (
-    <OrdersProvider credentials={credentials}>
-      <ManaPickInner onChangeCredentials={onChangeCredentials} />
+    <OrdersProvider onAccessExpired={onAccessExpired}>
+      <ManaPickInner onDisconnect={onDisconnect} />
     </OrdersProvider>
   );
 }
 
-function ManaPickInner({ onChangeCredentials }: { onChangeCredentials: () => void }) {
+function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
   const {
     fetchOrders, loading, isEmpty, cachedAt,
     clearAll, error,
@@ -106,9 +124,9 @@ function ManaPickInner({ onChangeCredentials }: { onChangeCredentials: () => voi
                   : "Refresh Manapool"}
             </span>
           </Button>
-          <Button variant="outline" size="sm" onClick={onChangeCredentials}>
+          <Button variant="outline" size="sm" onClick={onDisconnect}>
             <KeyRound className="h-4 w-4 mr-1" />
-            Change Manapool key
+            Disconnect Manapool
           </Button>
           {cachedAt !== null && !loading && (
             <span className="text-xs text-muted-foreground">

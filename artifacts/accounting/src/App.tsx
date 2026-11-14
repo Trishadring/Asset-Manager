@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,7 +8,35 @@ import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import { ManapoolKeyPanel } from "@/components/manapool-key-panel";
 import ManaPick from "@/pages/manapick";
-import type { ManaPoolCredentials } from "@/pages/manapick/OrdersProvider";
+
+interface ManapoolConnection {
+  connected: boolean;
+  scopes: string[];
+  expiresAt: string | null;
+}
+
+const disconnected: ManapoolConnection = {
+  connected: false,
+  scopes: [],
+  expiresAt: null,
+};
+
+function getOAuthErrorMessage(error: string | null): string | null {
+  switch (error) {
+    case "not_configured":
+      return "ManaPick’s Manapool OAuth credentials are not configured yet.";
+    case "invalid_scope":
+      return "ManaPool rejected the requested permissions. Enable orders:read and orders:write in your OAuth app.";
+    case "access_denied":
+      return "You declined the ManaPick connection. No account was connected.";
+    case "invalid_state":
+      return "The connection request expired or could not be verified. Please try again.";
+    case "connect_failed":
+      return "ManaPick could not connect to Manapool. Please try again.";
+    default:
+      return null;
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,37 +57,104 @@ function Router() {
 }
 
 function ManaPickPage() {
-  const [credentials, setCredentials] = useState<ManaPoolCredentials | null>(null);
+  const [connection, setConnection] = useState({
+    ...disconnected,
+    checking: true,
+  });
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [keyPanelOpen, setKeyPanelOpen] = useState(false);
 
-  function openKeyPanel() {
-    setKeyPanelOpen(true);
-  }
+  const disconnect = useCallback(async (expired = false) => {
+    try {
+      const response = await fetch("/api/manapick/oauth/disconnect", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("Disconnect failed.");
+      setConnection({ ...disconnected, checking: false });
+      setConnectionError(
+        expired
+          ? "Your ManaPool access has expired. Connect again to continue."
+          : null,
+      );
+    } catch {
+      setConnectionError("Could not disconnect from ManaPool. Please try again.");
+    }
+  }, []);
 
-  function changeCredentials() {
-    setCredentials(null);
-    setKeyPanelOpen(true);
-  }
+  const handleAccessExpired = useCallback(() => {
+    void disconnect(true);
+  }, [disconnect]);
+
+  useEffect(() => {
+    let active = true;
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("manapool_error");
+    setConnectionError(getOAuthErrorMessage(oauthError));
+
+    if (params.has("manapool_error") || params.has("manapool_connected")) {
+      params.delete("manapool_error");
+      params.delete("manapool_connected");
+      const search = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`,
+      );
+    }
+
+    async function loadConnection() {
+      try {
+        const response = await fetch("/api/manapick/oauth/status", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error("Could not check the Manapool connection.");
+        const body = (await response.json()) as ManapoolConnection;
+        if (active) setConnection({ ...body, checking: false });
+      } catch {
+        if (active) {
+          setConnection({ ...disconnected, checking: false });
+          setConnectionError("Could not check the Manapool connection. Refresh this page to retry.");
+        }
+      }
+    }
+
+    void loadConnection();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!connection.connected || !connection.expiresAt) return;
+    const expiresAt = Date.parse(connection.expiresAt);
+    if (!Number.isFinite(expiresAt)) return;
+    const timer = window.setTimeout(
+      () => void disconnect(true),
+      Math.max(0, expiresAt - Date.now() + 250),
+    );
+    return () => window.clearTimeout(timer);
+  }, [connection.connected, connection.expiresAt, disconnect]);
 
   return (
     <Layout
       sidebarContent={
         <ManapoolKeyPanel
-          credentials={credentials}
+          connected={connection.connected}
+          checking={connection.checking}
           open={keyPanelOpen}
           onOpenChange={setKeyPanelOpen}
-          onSave={(nextCredentials) => {
-            setCredentials(nextCredentials);
-            setKeyPanelOpen(false);
-          }}
-          onClear={() => setCredentials(null)}
+          onDisconnect={disconnect}
         />
       }
     >
       <ManaPick
-        credentials={credentials}
-        onOpenCredentials={openKeyPanel}
-        onChangeCredentials={changeCredentials}
+        connected={connection.connected}
+        checking={connection.checking}
+        connectionError={connectionError}
+        onDisconnect={disconnect}
+        onAccessExpired={handleAccessExpired}
       />
     </Layout>
   );

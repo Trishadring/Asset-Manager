@@ -24,18 +24,6 @@ type Phase = "pick" | "pack";
 const LEGACY_CACHE_KEY = "manapick-cache-v2";
 const PICK_CACHE_KEY = "manapick-picks-v1";
 
-export interface ManaPoolCredentials {
-  email: string;
-  token: string;
-}
-
-function manapoolHeaders(credentials: ManaPoolCredentials): Record<string, string> {
-  return {
-    "X-ManaPool-Email": credentials.email,
-    "X-ManaPool-Access-Token": credentials.token,
-  };
-}
-
 function readSavedPicks(session: string): Record<string, boolean> {
   if (!session) return {};
   try {
@@ -127,10 +115,10 @@ export function useOrders(): OrdersContextValue {
 
 export function OrdersProvider({
   children,
-  credentials,
+  onAccessExpired,
 }: {
   children: ReactNode;
-  credentials: ManaPoolCredentials;
+  onAccessExpired: () => void;
 }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [master, setMaster] = useState<Master>({});
@@ -159,13 +147,14 @@ export function OrdersProvider({
     try {
       const ordersRes = await fetch("/api/manapick/orders", {
         cache: "no-store",
-        headers: manapoolHeaders(credentials),
+        credentials: "same-origin",
       });
 
       if (!ordersRes.ok) {
         const body = (await ordersRes.json().catch(() => ({}))) as {
           error?: string;
         };
+        if (ordersRes.status === 401) onAccessExpired();
         throw new Error(body.error ?? `HTTP ${ordersRes.status}`);
       }
 
@@ -249,7 +238,7 @@ export function OrdersProvider({
       setLoading(false);
       setEnrichProgress({ done: 0, total: 0 });
     }
-  }, [credentials]);
+  }, [onAccessExpired]);
 
   useEffect(() => {
     void fetchOrders();
@@ -337,14 +326,15 @@ export function OrdersProvider({
     try {
       const r = await fetch(`/api/manapick/orders/${oid}/ship`, {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
-          ...manapoolHeaders(credentials),
         },
         body: JSON.stringify({ tracking_number: tn }),
       });
       if (!r.ok) {
         const body = (await r.json().catch(() => ({}))) as { error?: string };
+        if (r.status === 401) onAccessExpired();
         toast({ variant: "destructive", title: "Failed to ship", description: body.error ?? `HTTP ${r.status}` });
         return;
       }

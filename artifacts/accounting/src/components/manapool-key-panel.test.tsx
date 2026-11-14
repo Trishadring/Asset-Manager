@@ -5,45 +5,35 @@ import { describe, expect, it, vi } from "vitest";
 import { ManapoolKeyPanel } from "./manapool-key-panel";
 
 describe("ManapoolKeyPanel", () => {
-  it("keeps the key form collapsed, masks the key, and saves credentials", async () => {
+  it("keeps the connection panel collapsed and links to ManaPool authorization", async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn();
 
     function Harness() {
       const [open, setOpen] = useState(false);
 
       return (
         <ManapoolKeyPanel
-          credentials={null}
+          connected={false}
+          checking={false}
           open={open}
           onOpenChange={setOpen}
-          onSave={(credentials) => {
-            onSave(credentials);
-            setOpen(false);
-          }}
-          onClear={vi.fn()}
+          onDisconnect={vi.fn()}
         />
       );
     }
 
     render(<Harness />);
 
-    expect(screen.queryByLabelText("App key")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Connect with Manapool/i }),
+    ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Manapool key/i }));
+    await user.click(
+      screen.getByRole("button", { name: /ManaPool/i }),
+    );
 
-    const emailInput = screen.getByLabelText("Email");
-    const keyInput = screen.getByLabelText("App key");
-    expect(keyInput).toHaveAttribute("type", "password");
-
-    await user.type(emailInput, "seller@example.com");
-    await user.type(keyInput, "sample-app-key");
-    await user.click(screen.getByRole("button", { name: "Connect" }));
-
-    expect(onSave).toHaveBeenCalledWith({
-      email: "seller@example.com",
-      token: "sample-app-key",
-    });
-    expect(screen.queryByLabelText("App key")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Connect with Manapool/i }),
+    ).toHaveAttribute("href", "/api/manapick/oauth/start");
   });
 });

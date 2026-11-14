@@ -8,11 +8,9 @@ import salesRouter from "./sales";
 import ebayNotificationsRouter from "./ebay-notifications";
 import ebayRouter from "./ebay";
 import manapickRouter from "./manapick";
+import manapickOAuthRouter from "./manapick-oauth";
 import tcgplayerRouter from "./tcgplayer";
-import {
-  isPublicManaPickRoute,
-  requiresManaPoolKey,
-} from "../lib/public-manapick";
+import { isPublicManaPickRoute } from "../lib/public-manapick";
 
 const router: IRouter = Router();
 
@@ -28,14 +26,6 @@ router.use(healthRouter);
 // Require authentication for all remaining routes (skipped in development)
 router.use((req: Request, res: Response, next: NextFunction) => {
   if (isPublicManaPickRoute(req.method, req.path)) {
-    if (requiresManaPoolKey(req.method, req.path)) {
-      const email = req.get("X-ManaPool-Email")?.trim();
-      const token = req.get("X-ManaPool-Access-Token")?.trim();
-      if (!email || !token) {
-        res.status(401).json({ error: "Enter your Manapool email and API key to continue." });
-        return;
-      }
-    }
     next();
     return;
   }
@@ -52,6 +42,7 @@ router.use(purchasesRouter);
 router.use(ordersRouter);
 router.use(salesRouter);
 router.use(ebayRouter);
+router.use(manapickOAuthRouter);
 router.use(manapickRouter);
 router.use(tcgplayerRouter);
 

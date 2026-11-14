@@ -1,9 +1,19 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { manapickPicksTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { getScryfallSets } from "../lib/scryfall-sets";
+import { getManapoolAccessToken } from "../lib/manapool-oauth";
+import {
+  EnrichManapickCardsBody,
+  EnrichManapickCardsResponse,
+  GetManapickOrdersResponse,
+  GetManapickSetsResponse,
+  ShipManapickOrderBody,
+  ShipManapickOrderParams,
+  ShipManapickOrderResponse,
+} from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -16,18 +26,10 @@ const FINISH_LABELS: Record<string, string> = {
   EF: "etched",
 };
 
-function getCredentials(req: Request): { email: string; token: string } {
-  const email = req.get("X-ManaPool-Email")?.trim() ?? "";
-  const token = req.get("X-ManaPool-Access-Token")?.trim() ?? "";
-  if (!email || !token) throw new Error("Manapool email and API key are required.");
-  return { email, token };
-}
-
-function mpHeaders(email: string, token: string) {
+function mpHeaders(accessToken: string) {
   return {
     Accept: "application/json",
-    "X-ManaPool-Email": email,
-    "X-ManaPool-Access-Token": token,
+    Authorization: `Bearer ${accessToken}`,
   };
 }
 
@@ -36,11 +38,9 @@ function mpHeaders(email: string, token: string) {
 router.get("/manapick/orders", async (req, res): Promise<void> => {
   res.set("Cache-Control", "no-store");
 
-  let email: string, token: string;
-  try {
-    ({ email, token } = getCredentials(req));
-  } catch {
-    res.status(401).json({ error: "Enter your Manapool email and API key to continue." });
+  const accessToken = await getManapoolAccessToken(req);
+  if (!accessToken) {
+    res.status(401).json({ error: "Connect to Manapool to continue." });
     return;
   }
 
@@ -50,10 +50,10 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
     while (true) {
       const resp = await fetch(
         `${MANAPOOL_BASE}/seller/orders?is_fulfilled=false&limit=${limit}&offset=${offset}`,
-        { headers: mpHeaders(email, token) },
+        { headers: mpHeaders(accessToken) },
       );
       if (resp.status === 401) {
-        res.status(401).json({ error: "Manapool rejected those credentials. Check the email and API key." });
+        res.status(401).json({ error: "Manapool authorization expired. Reconnect and try again." });
         return;
       }
       if (!resp.ok) {
@@ -76,7 +76,7 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
       const results = await Promise.allSettled(
         batch.map((oid) =>
           fetch(`${MANAPOOL_BASE}/seller/orders/${oid}`, {
-            headers: mpHeaders(email, token),
+            headers: mpHeaders(accessToken),
           }).then(async (r) => {
             if (!r.ok) return null;
             const body = (await r.json()) as Record<string, unknown>;
@@ -130,8 +130,7 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
     }
 
     req.log.info({ orders: orders.length, uniqueCards: Object.keys(master).length, sets: Object.keys(sets).length }, "manapick orders fetched");
-    const payload = { orders, master, sets };
-    res.json(payload);
+    res.json(GetManapickOrdersResponse.parse({ orders, master, sets }));
   } catch (err) {
     logger.error(err, "manapick/orders error");
     res.status(500).json({ error: "Internal server error" });
@@ -142,17 +141,21 @@ router.get("/manapick/orders", async (req, res): Promise<void> => {
 // Scryfall sets for sorting and display (cached 1h)
 router.get("/manapick/sets", async (_req, res): Promise<void> => {
   const sets = await getScryfallSets();
-  res.json({ sets });
+  res.json(GetManapickSetsResponse.parse({ sets }));
 });
 
 // POST /api/manapick/enrich
 // Batch Scryfall lookup using /cards/collection (up to 75 per call)
 router.post("/manapick/enrich", async (req, res): Promise<void> => {
-  const { identifiers } = req.body as {
-    identifiers: Array<{ key: string; scryfall_id?: string; set?: string; collector_number?: string; name?: string }>;
-  };
-  if (!Array.isArray(identifiers) || identifiers.length === 0) {
-    res.json({ results: {} }); return;
+  const input = EnrichManapickCardsBody.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ error: input.error.message });
+    return;
+  }
+  const { identifiers } = input.data;
+  if (identifiers.length === 0) {
+    res.json(EnrichManapickCardsResponse.parse({ results: {} }));
+    return;
   }
 
   try {
@@ -217,7 +220,7 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
       }
     }
     req.log.info({ matched: Object.keys(results).length, total: identifiers.length }, "enrich complete");
-    res.json({ results });
+    res.json(EnrichManapickCardsResponse.parse({ results }));
   } catch (err) {
     logger.error(err, "manapick/enrich error");
     res.status(500).json({ error: "Internal server error" });
@@ -226,16 +229,24 @@ router.post("/manapick/enrich", async (req, res): Promise<void> => {
 
 // POST /api/manapick/orders/:id/ship
 router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
-  let email: string, token: string;
-  try {
-    ({ email, token } = getCredentials(req));
-  } catch {
-    res.status(401).json({ error: "Enter your Manapool email and API key to continue." });
+  const accessToken = await getManapoolAccessToken(req);
+  if (!accessToken) {
+    res.status(401).json({ error: "Reconnect to Manapool to continue." });
     return;
   }
 
-  const orderId = req.params["id"]!;
-  const { tracking_number = "" } = req.body as { tracking_number?: string };
+  const params = ShipManapickOrderParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsedBody = ShipManapickOrderBody.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    res.status(400).json({ error: parsedBody.error.message });
+    return;
+  }
+  const orderId = params.data.id;
+  const tracking_number = parsedBody.data.tracking_number ?? "";
 
   const body: Record<string, unknown> = { status: "shipped", tracking_company: "USPS" };
   if (tracking_number.trim()) {
@@ -246,14 +257,15 @@ router.post("/manapick/orders/:id/ship", async (req, res): Promise<void> => {
   try {
     const r = await fetch(`${MANAPOOL_BASE}/seller/orders/${orderId}/fulfillment`, {
       method: "PUT",
-      headers: { ...mpHeaders(email, token), "Content-Type": "application/json" },
+      headers: { ...mpHeaders(accessToken), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     if (!r.ok) {
       req.log.warn({ status: r.status, order: orderId }, "Manapool fulfillment update failed");
-      res.status(r.status).json({ error: "Manapool fulfillment update failed" }); return;
+      res.status(502).json({ error: "Manapool fulfillment update failed" });
+      return;
     }
-    res.json({ success: true });
+    res.json(ShipManapickOrderResponse.parse({ success: true }));
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }

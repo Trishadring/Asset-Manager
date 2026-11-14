@@ -16,6 +16,94 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary Get the current Manapool connection status
+ */
+export const GetManapickConnectionStatusResponse = zod.object({
+  connected: zod.boolean(),
+  scopes: zod.array(zod.string()),
+  expiresAt: zod.coerce.date().nullable(),
+});
+
+/**
+ * @summary Complete the Manapool OAuth authorization flow
+ */
+export const CompleteManapickOAuthQueryParams = zod.object({
+  code: zod.coerce.string().optional(),
+  state: zod.coerce.string().optional(),
+  error: zod.coerce.string().optional(),
+  error_description: zod.coerce.string().optional(),
+});
+
+/**
+ * @summary Disconnect this browser's Manapool session
+ */
+export const DisconnectManapickResponse = zod.object({
+  connected: zod.boolean(),
+  scopes: zod.array(zod.string()),
+  expiresAt: zod.coerce.date().nullable(),
+});
+
+/**
+ * @summary Get card sets used by ManaPick
+ */
+export const GetManapickSetsResponse = zod.object({
+  sets: zod.record(
+    zod.string(),
+    zod.object({
+      name: zod.string(),
+      released_at: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Look up card details through Scryfall
+ */
+export const enrichManapickCardsBodyIdentifiersMax = 75;
+
+export const EnrichManapickCardsBody = zod.object({
+  identifiers: zod
+    .array(
+      zod.object({
+        key: zod.string(),
+        scryfall_id: zod.string().optional(),
+        set: zod.string().optional(),
+        collector_number: zod.string().optional(),
+        name: zod.string().optional(),
+      }),
+    )
+    .max(enrichManapickCardsBodyIdentifiersMax),
+});
+
+export const EnrichManapickCardsResponse = zod.object({
+  results: zod.record(zod.string(), zod.unknown()),
+});
+
+/**
+ * @summary Fetch paid, unshipped Manapool orders
+ */
+export const GetManapickOrdersResponse = zod.object({
+  orders: zod.array(zod.record(zod.string(), zod.unknown())),
+  master: zod.record(zod.string(), zod.unknown()),
+  sets: zod.record(zod.string(), zod.unknown()),
+});
+
+/**
+ * @summary Mark a Manapool order as shipped
+ */
+export const ShipManapickOrderParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ShipManapickOrderBody = zod.object({
+  tracking_number: zod.string().optional(),
+});
+
+export const ShipManapickOrderResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
  * @summary Get the currently authenticated user
  */
 export const GetCurrentAuthUserHeader = zod.object({

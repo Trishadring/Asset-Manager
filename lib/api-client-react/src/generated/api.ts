@@ -19,10 +19,18 @@ import type {
 import type {
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  CompleteManapickOAuthParams,
   ErrorEnvelope,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   LogoutSuccess,
+  ManaPickConnectionStatus,
+  ManaPickEnrichInput,
+  ManaPickEnrichResponse,
+  ManaPickOrdersResponse,
+  ManaPickSetsResponse,
+  ManaPickShipInput,
+  ManaPickShipSuccess,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
 } from "./api.schemas";
@@ -111,6 +119,665 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Get the current Manapool connection status
+ */
+export const getGetManapickConnectionStatusUrl = () => {
+  return `/api/manapick/oauth/status`;
+};
+
+export const getManapickConnectionStatus = async (
+  options?: RequestInit,
+): Promise<ManaPickConnectionStatus> => {
+  return customFetch<ManaPickConnectionStatus>(
+    getGetManapickConnectionStatusUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetManapickConnectionStatusQueryKey = () => {
+  return [`/api/manapick/oauth/status`] as const;
+};
+
+export const getGetManapickConnectionStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getManapickConnectionStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickConnectionStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetManapickConnectionStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getManapickConnectionStatus>>
+  > = ({ signal }) =>
+    getManapickConnectionStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickConnectionStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetManapickConnectionStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getManapickConnectionStatus>>
+>;
+export type GetManapickConnectionStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the current Manapool connection status
+ */
+
+export function useGetManapickConnectionStatus<
+  TData = Awaited<ReturnType<typeof getManapickConnectionStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickConnectionStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetManapickConnectionStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Start the Manapool OAuth authorization flow
+ */
+export const getBeginManapickOAuthUrl = () => {
+  return `/api/manapick/oauth/start`;
+};
+
+export const beginManapickOAuth = async (
+  options?: RequestInit,
+): Promise<unknown> => {
+  return customFetch<unknown>(getBeginManapickOAuthUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getBeginManapickOAuthQueryKey = () => {
+  return [`/api/manapick/oauth/start`] as const;
+};
+
+export const getBeginManapickOAuthQueryOptions = <
+  TData = Awaited<ReturnType<typeof beginManapickOAuth>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof beginManapickOAuth>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getBeginManapickOAuthQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof beginManapickOAuth>>
+  > = ({ signal }) => beginManapickOAuth({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof beginManapickOAuth>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type BeginManapickOAuthQueryResult = NonNullable<
+  Awaited<ReturnType<typeof beginManapickOAuth>>
+>;
+export type BeginManapickOAuthQueryError = ErrorType<void>;
+
+/**
+ * @summary Start the Manapool OAuth authorization flow
+ */
+
+export function useBeginManapickOAuth<
+  TData = Awaited<ReturnType<typeof beginManapickOAuth>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof beginManapickOAuth>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getBeginManapickOAuthQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Complete the Manapool OAuth authorization flow
+ */
+export const getCompleteManapickOAuthUrl = (
+  params?: CompleteManapickOAuthParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/manapick/oauth/callback?${stringifiedParams}`
+    : `/api/manapick/oauth/callback`;
+};
+
+export const completeManapickOAuth = async (
+  params?: CompleteManapickOAuthParams,
+  options?: RequestInit,
+): Promise<unknown> => {
+  return customFetch<unknown>(getCompleteManapickOAuthUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getCompleteManapickOAuthQueryKey = (
+  params?: CompleteManapickOAuthParams,
+) => {
+  return [`/api/manapick/oauth/callback`, ...(params ? [params] : [])] as const;
+};
+
+export const getCompleteManapickOAuthQueryOptions = <
+  TData = Awaited<ReturnType<typeof completeManapickOAuth>>,
+  TError = ErrorType<void>,
+>(
+  params?: CompleteManapickOAuthParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof completeManapickOAuth>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getCompleteManapickOAuthQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof completeManapickOAuth>>
+  > = ({ signal }) =>
+    completeManapickOAuth(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof completeManapickOAuth>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type CompleteManapickOAuthQueryResult = NonNullable<
+  Awaited<ReturnType<typeof completeManapickOAuth>>
+>;
+export type CompleteManapickOAuthQueryError = ErrorType<void>;
+
+/**
+ * @summary Complete the Manapool OAuth authorization flow
+ */
+
+export function useCompleteManapickOAuth<
+  TData = Awaited<ReturnType<typeof completeManapickOAuth>>,
+  TError = ErrorType<void>,
+>(
+  params?: CompleteManapickOAuthParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof completeManapickOAuth>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getCompleteManapickOAuthQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Disconnect this browser's Manapool session
+ */
+export const getDisconnectManapickUrl = () => {
+  return `/api/manapick/oauth/disconnect`;
+};
+
+export const disconnectManapick = async (
+  options?: RequestInit,
+): Promise<ManaPickConnectionStatus> => {
+  return customFetch<ManaPickConnectionStatus>(getDisconnectManapickUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getDisconnectManapickMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof disconnectManapick>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof disconnectManapick>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["disconnectManapick"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof disconnectManapick>>,
+    void
+  > = () => {
+    return disconnectManapick(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DisconnectManapickMutationResult = NonNullable<
+  Awaited<ReturnType<typeof disconnectManapick>>
+>;
+
+export type DisconnectManapickMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Disconnect this browser's Manapool session
+ */
+export const useDisconnectManapick = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof disconnectManapick>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof disconnectManapick>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDisconnectManapickMutationOptions(options));
+};
+
+/**
+ * @summary Get card sets used by ManaPick
+ */
+export const getGetManapickSetsUrl = () => {
+  return `/api/manapick/sets`;
+};
+
+export const getManapickSets = async (
+  options?: RequestInit,
+): Promise<ManaPickSetsResponse> => {
+  return customFetch<ManaPickSetsResponse>(getGetManapickSetsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetManapickSetsQueryKey = () => {
+  return [`/api/manapick/sets`] as const;
+};
+
+export const getGetManapickSetsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getManapickSets>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickSets>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetManapickSetsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getManapickSets>>> = ({
+    signal,
+  }) => getManapickSets({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickSets>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetManapickSetsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getManapickSets>>
+>;
+export type GetManapickSetsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get card sets used by ManaPick
+ */
+
+export function useGetManapickSets<
+  TData = Awaited<ReturnType<typeof getManapickSets>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickSets>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetManapickSetsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Look up card details through Scryfall
+ */
+export const getEnrichManapickCardsUrl = () => {
+  return `/api/manapick/enrich`;
+};
+
+export const enrichManapickCards = async (
+  manaPickEnrichInput: ManaPickEnrichInput,
+  options?: RequestInit,
+): Promise<ManaPickEnrichResponse> => {
+  return customFetch<ManaPickEnrichResponse>(getEnrichManapickCardsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(manaPickEnrichInput),
+  });
+};
+
+export const getEnrichManapickCardsMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof enrichManapickCards>>,
+    TError,
+    { data: BodyType<ManaPickEnrichInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof enrichManapickCards>>,
+  TError,
+  { data: BodyType<ManaPickEnrichInput> },
+  TContext
+> => {
+  const mutationKey = ["enrichManapickCards"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof enrichManapickCards>>,
+    { data: BodyType<ManaPickEnrichInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return enrichManapickCards(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EnrichManapickCardsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof enrichManapickCards>>
+>;
+export type EnrichManapickCardsMutationBody = BodyType<ManaPickEnrichInput>;
+export type EnrichManapickCardsMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Look up card details through Scryfall
+ */
+export const useEnrichManapickCards = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof enrichManapickCards>>,
+    TError,
+    { data: BodyType<ManaPickEnrichInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof enrichManapickCards>>,
+  TError,
+  { data: BodyType<ManaPickEnrichInput> },
+  TContext
+> => {
+  return useMutation(getEnrichManapickCardsMutationOptions(options));
+};
+
+/**
+ * @summary Fetch paid, unshipped Manapool orders
+ */
+export const getGetManapickOrdersUrl = () => {
+  return `/api/manapick/orders`;
+};
+
+export const getManapickOrders = async (
+  options?: RequestInit,
+): Promise<ManaPickOrdersResponse> => {
+  return customFetch<ManaPickOrdersResponse>(getGetManapickOrdersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetManapickOrdersQueryKey = () => {
+  return [`/api/manapick/orders`] as const;
+};
+
+export const getGetManapickOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof getManapickOrders>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetManapickOrdersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getManapickOrders>>
+  > = ({ signal }) => getManapickOrders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetManapickOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getManapickOrders>>
+>;
+export type GetManapickOrdersQueryError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Fetch paid, unshipped Manapool orders
+ */
+
+export function useGetManapickOrders<
+  TData = Awaited<ReturnType<typeof getManapickOrders>>,
+  TError = ErrorType<ErrorEnvelope>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getManapickOrders>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetManapickOrdersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Mark a Manapool order as shipped
+ */
+export const getShipManapickOrderUrl = (id: string) => {
+  return `/api/manapick/orders/${id}/ship`;
+};
+
+export const shipManapickOrder = async (
+  id: string,
+  manaPickShipInput: ManaPickShipInput,
+  options?: RequestInit,
+): Promise<ManaPickShipSuccess> => {
+  return customFetch<ManaPickShipSuccess>(getShipManapickOrderUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(manaPickShipInput),
+  });
+};
+
+export const getShipManapickOrderMutationOptions = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof shipManapickOrder>>,
+    TError,
+    { id: string; data: BodyType<ManaPickShipInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof shipManapickOrder>>,
+  TError,
+  { id: string; data: BodyType<ManaPickShipInput> },
+  TContext
+> => {
+  const mutationKey = ["shipManapickOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof shipManapickOrder>>,
+    { id: string; data: BodyType<ManaPickShipInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return shipManapickOrder(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ShipManapickOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof shipManapickOrder>>
+>;
+export type ShipManapickOrderMutationBody = BodyType<ManaPickShipInput>;
+export type ShipManapickOrderMutationError = ErrorType<ErrorEnvelope>;
+
+/**
+ * @summary Mark a Manapool order as shipped
+ */
+export const useShipManapickOrder = <
+  TError = ErrorType<ErrorEnvelope>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof shipManapickOrder>>,
+    TError,
+    { id: string; data: BodyType<ManaPickShipInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof shipManapickOrder>>,
+  TError,
+  { id: string; data: BodyType<ManaPickShipInput> },
+  TContext
+> => {
+  return useMutation(getShipManapickOrderMutationOptions(options));
+};
 
 /**
  * @summary Get the currently authenticated user
