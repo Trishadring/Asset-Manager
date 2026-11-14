@@ -88,6 +88,7 @@ export function ManapoolKeyPanel({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 autoComplete="off"
+                autoFocus
                 required
               />
             </div>

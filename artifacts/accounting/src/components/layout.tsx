@@ -42,7 +42,7 @@ export function Layout({
 
         </nav>
         {sidebarContent && (
-          <div className="px-4 pb-5 pt-3 md:mt-auto">
+          <div className="px-4 pb-5 pt-3">
             {sidebarContent}
           </div>
         )}
