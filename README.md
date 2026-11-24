@@ -39,7 +39,7 @@ lib/
 - `src/pages/manapick/OrdersProvider.tsx`: order loading, enrichment, pick and ship state
 - `src/pages/manapick/PickView.tsx`, `CardItem.tsx`: pick phase
 - `src/pages/manapick/PackView.tsx`: pack and ship phase
-- `src/components/manapool-key-panel.tsx`: Manapool connection panel in the sidebar
+- `src/components/manapool-key-panel.tsx`: Manapool connection menu in the header
 
 ### API (`artifacts/api-server`)
 
@@ -68,6 +68,8 @@ Generate a cookie encryption key (at least 32 characters) and set it as `COOKIE_
 openssl rand -base64 32
 ```
 
+For local development you can put these variables in an untracked `local.env` file at the repo root (it is git-ignored). The API server loads it on startup; variables already set in the environment take precedence.
+
 Run the API server:
 
 ```bash
@@ -87,7 +89,7 @@ pnpm --filter @workspace/accounting run dev
 | `COOKIE_ENCRYPTION_KEY` | API server | Secret (at least 32 characters) used to encrypt the Manapool connection cookie. Rotating it disconnects every user. |
 | `MANAPOOL_CLIENT_ID` | API server | Manapool OAuth client ID |
 | `MANAPOOL_CLIENT_SECRET` | API server | Manapool OAuth client secret |
-| `MANAPOOL_REDIRECT_URI` | API server | HTTPS OAuth callback URL, `https://<host>/api/manapick/oauth/callback` |
+| `MANAPOOL_REDIRECT_URI` | API server | OAuth callback URL (HTTPS, or HTTP for localhost only), `https://<host>/api/manapick/oauth/callback` |
 | `PORT` | API server, frontend | Port to listen on |
 | `BASE_PATH` | Frontend | Base path the app is served from |
 | `API_PROXY_TARGET` | Frontend (dev) | API server URL for `/api` proxying (default `http://localhost:8080`) |

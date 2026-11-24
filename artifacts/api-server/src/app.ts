@@ -67,6 +67,12 @@ app.use((req, res, next) => {
     next();
     return;
   }
+  // Missing static files (anything with an extension) should 404 rather than
+  // receive index.html.
+  if (path.extname(req.path)) {
+    next();
+    return;
+  }
   res.sendFile(path.join(accountingDist, "index.html"), (err) => {
     if (err) next();
   });

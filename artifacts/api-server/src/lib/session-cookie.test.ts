@@ -7,6 +7,7 @@ import {
   decryptSession,
   deriveEncryptionKey,
   encryptSession,
+  encryptSessionFitting,
   parseSession,
   type CookieSession,
 } from "./session-cookie";
@@ -141,6 +142,35 @@ describe("encryptSession / decryptSession", () => {
     );
     assert.ok(value.length <= MAX_COOKIE_VALUE_LENGTH);
     assert.equal(decryptSession(value, key)?.connection?.accessToken, accessToken);
+  });
+});
+
+describe("encryptSessionFitting", () => {
+  const pending = session.pending!;
+  const bigConnection = {
+    accessToken: "x".repeat(2_700),
+    expiresAt: 3_000,
+    scopes: "orders:read orders:write",
+  };
+
+  it("keeps both parts when they fit", () => {
+    const value = encryptSessionFitting(session, key);
+    assert.deepEqual(decryptSession(value, key), session);
+  });
+
+  it("drops the existing connection when pending plus connection is too large", () => {
+    const both: CookieSession = { pending, connection: bigConnection };
+    assert.throws(() => encryptSession(both, key), /too large/);
+    const value = encryptSessionFitting(both, key);
+    assert.ok(value.length <= MAX_COOKIE_VALUE_LENGTH);
+    assert.deepEqual(decryptSession(value, key), { pending });
+  });
+
+  it("still throws when a connection alone is too large", () => {
+    const oversized: CookieSession = {
+      connection: { ...bigConnection, accessToken: "x".repeat(MAX_COOKIE_VALUE_LENGTH) },
+    };
+    assert.throws(() => encryptSessionFitting(oversized, key), /too large/);
   });
 });
 

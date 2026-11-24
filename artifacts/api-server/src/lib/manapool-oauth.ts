@@ -9,7 +9,7 @@ import {
   activeConnection,
   decryptSession,
   deriveEncryptionKey,
-  encryptSession,
+  encryptSessionFitting,
   type CookieSession,
 } from "./session-cookie";
 
@@ -60,7 +60,9 @@ function getRedirectUri(req: Request): string {
     if (url.protocol === "https:" || (url.protocol === "http:" && isLocalhost)) {
       return url.toString();
     }
-    throw new Error("MANAPOOL_REDIRECT_URI must use HTTPS.");
+    throw new Error(
+      "MANAPOOL_REDIRECT_URI must use HTTPS (http is allowed only for localhost).",
+    );
   }
 
   const protocol = req.secure ? "https" : "http";
@@ -142,7 +144,7 @@ function writeSessionCookie(
     return;
   }
 
-  const value = encryptSession(session, key);
+  const value = encryptSessionFitting(session, key);
   res.cookie(SESSION_COOKIE, value, {
     httpOnly: true,
     secure: secureCookieRequest(req),

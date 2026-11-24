@@ -48,4 +48,4 @@ Order fetch and Scryfall enrichment can fan out into many upstream requests. Tho
 
 ### Elevation of Privilege
 
-There is no second application account. Anyone who can read the Manapool session cookie can act as that seller until the token expires (at most 60 minutes) or the seller disconnects. The cookie key and OAuth client secret must stay server-side.
+There is no second application account. Anyone who can read the Manapool session cookie can act as that seller until the token expires (at most 60 minutes) or the seller disconnects. Disconnecting only clears the browser cookie; it does not revoke the access token at Manapool, so a copied cookie stays usable until the token expires. The cookie key and OAuth client secret must stay server-side.

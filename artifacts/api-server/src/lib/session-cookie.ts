@@ -71,6 +71,24 @@ export function encryptSession(session: CookieSession, key: Buffer): string {
   return value;
 }
 
+/**
+ * Like encryptSession, but when a session holding both a pending authorization
+ * and an existing connection is too large for one cookie, drops the existing
+ * connection so the new authorization can still start. Throws if the session
+ * cannot fit even without the connection.
+ */
+export function encryptSessionFitting(
+  session: CookieSession,
+  key: Buffer,
+): string {
+  try {
+    return encryptSession(session, key);
+  } catch (error) {
+    if (!session.pending || !session.connection) throw error;
+    return encryptSession({ pending: session.pending }, key);
+  }
+}
+
 /** Returns the session, or null if the value is malformed, tampered or forged. */
 export function decryptSession(value: string, key: Buffer): CookieSession | null {
   const [version, encoded] = value.split(".", 2);
