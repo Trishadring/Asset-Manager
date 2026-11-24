@@ -8,20 +8,18 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
-// Public diagnostic: reveals which env var KEYS are present (never values).
-// Used to verify secret injection in production without exposing credentials.
+// Public diagnostic: reports only whether the required secrets are configured,
+// to verify secret injection without exposing credentials. It must not list
+// environment variable names or values.
 router.get("/healthz/env", (_req, res) => {
   const check = (key: string) => {
-    const val = process.env[key];
+    const val = process.env[key]?.trim();
     return !!val && val.length > 0;
   };
   res.json({
-    NODE_ENV: process.env["NODE_ENV"],
     hasManapoolOAuth:
       check("MANAPOOL_CLIENT_ID") && check("MANAPOOL_CLIENT_SECRET"),
     hasCookieEncryptionKey: check("COOKIE_ENCRYPTION_KEY"),
-    envKeyCount: Object.keys(process.env).length,
-    envKeys: Object.keys(process.env).sort(),
   });
 });
 

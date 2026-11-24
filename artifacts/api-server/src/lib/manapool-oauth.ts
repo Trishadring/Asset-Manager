@@ -1,26 +1,22 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  hkdfSync,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import {
   DisconnectManapickResponse,
   GetManapickConnectionStatusResponse,
 } from "@workspace/api-zod";
+import {
+  SESSION_COOKIE,
+  activeConnection,
+  decryptSession,
+  deriveEncryptionKey,
+  encryptSession,
+  type CookieSession,
+} from "./session-cookie";
 
 const AUTHORIZATION_ENDPOINT = "https://auth.manapool.com/oauth2/auth";
 const TOKEN_ENDPOINT = "https://auth.manapool.com/oauth2/token";
-const SESSION_COOKIE = "manapick_sid";
-const COOKIE_VERSION = "v1";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const MAX_TOKEN_LIFETIME_S = 60 * 60;
-// Browsers reject cookies larger than about 4 KB (name, value and attributes).
-const MAX_COOKIE_VALUE_LENGTH = 3800;
-const MIN_SECRET_LENGTH = 32;
 const REQUESTED_SCOPES = ["orders:read", "orders:write"] as const;
 
 type OAuthTokenResponse = {
@@ -30,36 +26,8 @@ type OAuthTokenResponse = {
   error?: unknown;
 };
 
-type PendingAuthorization = {
-  state: string;
-  codeVerifier: string;
-  redirectUri: string;
-  expiresAt: number;
-};
-
-type ManapoolConnection = {
-  accessToken: string;
-  expiresAt: number;
-  scopes: string;
-};
-
-type CookieSession = {
-  pending?: PendingAuthorization;
-  connection?: ManapoolConnection;
-};
-
-let cachedKey: { secret: string; key: Buffer } | null = null;
-
 function getEncryptionKey(): Buffer | null {
-  const secret = process.env["COOKIE_ENCRYPTION_KEY"]?.trim();
-  if (!secret || secret.length < MIN_SECRET_LENGTH) return null;
-  if (cachedKey?.secret !== secret) {
-    const key = Buffer.from(
-      hkdfSync("sha256", secret, "", "manapick-session-cookie", 32),
-    );
-    cachedKey = { secret, key };
-  }
-  return cachedKey.key;
+  return deriveEncryptionKey(process.env["COOKIE_ENCRYPTION_KEY"]);
 }
 
 function getClientCredentials() {
@@ -67,81 +35,6 @@ function getClientCredentials() {
   const clientSecret = process.env["MANAPOOL_CLIENT_SECRET"]?.trim();
   if (!clientId || !clientSecret || !getEncryptionKey()) return null;
   return { clientId, clientSecret };
-}
-
-function encryptSession(session: CookieSession, key: Buffer): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(Buffer.from(`${SESSION_COOKIE}.${COOKIE_VERSION}`));
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(session), "utf8"),
-    cipher.final(),
-  ]);
-  const payload = Buffer.concat([iv, ciphertext, cipher.getAuthTag()]);
-  return `${COOKIE_VERSION}.${payload.toString("base64url")}`;
-}
-
-function decryptSession(value: string, key: Buffer): CookieSession | null {
-  const [version, encoded] = value.split(".", 2);
-  if (version !== COOKIE_VERSION || !encoded) return null;
-  try {
-    const payload = Buffer.from(encoded, "base64url");
-    if (payload.length < 12 + 16 + 1) return null;
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      key,
-      payload.subarray(0, 12),
-    );
-    decipher.setAAD(Buffer.from(`${SESSION_COOKIE}.${COOKIE_VERSION}`));
-    decipher.setAuthTag(payload.subarray(payload.length - 16));
-    const plaintext = Buffer.concat([
-      decipher.update(payload.subarray(12, payload.length - 16)),
-      decipher.final(),
-    ]).toString("utf8");
-    return parseSession(JSON.parse(plaintext));
-  } catch {
-    return null;
-  }
-}
-
-function parseSession(raw: unknown): CookieSession | null {
-  if (!raw || typeof raw !== "object") return null;
-  const { pending, connection } = raw as Record<string, unknown>;
-  const session: CookieSession = {};
-
-  if (pending && typeof pending === "object") {
-    const p = pending as Record<string, unknown>;
-    if (
-      typeof p["state"] === "string" &&
-      typeof p["codeVerifier"] === "string" &&
-      typeof p["redirectUri"] === "string" &&
-      typeof p["expiresAt"] === "number"
-    ) {
-      session.pending = {
-        state: p["state"],
-        codeVerifier: p["codeVerifier"],
-        redirectUri: p["redirectUri"],
-        expiresAt: p["expiresAt"],
-      };
-    }
-  }
-
-  if (connection && typeof connection === "object") {
-    const c = connection as Record<string, unknown>;
-    if (
-      typeof c["accessToken"] === "string" &&
-      typeof c["expiresAt"] === "number" &&
-      typeof c["scopes"] === "string"
-    ) {
-      session.connection = {
-        accessToken: c["accessToken"],
-        expiresAt: c["expiresAt"],
-        scopes: c["scopes"],
-      };
-    }
-  }
-
-  return session;
 }
 
 function readSession(req: Request): CookieSession | null {
@@ -250,9 +143,6 @@ function writeSessionCookie(
   }
 
   const value = encryptSession(session, key);
-  if (value.length > MAX_COOKIE_VALUE_LENGTH) {
-    throw new Error("Manapool session is too large to store in a cookie.");
-  }
   res.cookie(SESSION_COOKIE, value, {
     httpOnly: true,
     secure: secureCookieRequest(req),
@@ -260,13 +150,6 @@ function writeSessionCookie(
     path: "/",
     maxAge: expiresAt - now,
   });
-}
-
-function activeConnection(
-  session: CookieSession | null,
-): ManapoolConnection | null {
-  const connection = session?.connection;
-  return connection && connection.expiresAt > Date.now() ? connection : null;
 }
 
 function queryString(req: Request, key: string): string | null {

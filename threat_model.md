@@ -26,7 +26,7 @@ Assumptions for security review:
 
 - **Production entry points:** `artifacts/api-server/src/index.ts`, `artifacts/api-server/src/app.ts`, `artifacts/api-server/src/routes/index.ts`, `artifacts/accounting/src/App.tsx`
 - **Highest-risk areas:** `artifacts/api-server/src/lib/manapool-oauth.ts`, `artifacts/api-server/src/routes/manapick.ts`, `artifacts/api-server/src/routes/manapick-oauth.ts`
-- **Public surfaces:** `/api/healthz` and the ManaPick OAuth, order, enrich, and ship routes. The ship and order routes require a valid Manapool session cookie.
+- **Public surfaces:** `/api/healthz`, `/api/healthz/env` (reports only whether the OAuth credentials and cookie key are configured; never environment variable names or values), and the ManaPick OAuth, order, enrich, and ship routes. The ship and order routes require a valid Manapool session cookie.
 
 ## Threat Categories
 
