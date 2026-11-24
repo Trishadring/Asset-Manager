@@ -20,7 +20,6 @@ router.get("/healthz/env", (_req, res) => {
     hasManapoolOAuth:
       check("MANAPOOL_CLIENT_ID") && check("MANAPOOL_CLIENT_SECRET"),
     hasCookieEncryptionKey: check("COOKIE_ENCRYPTION_KEY"),
-    hasEbay: check("EBAY_CLIENT_ID") && check("EBAY_CLIENT_SECRET"),
     envKeyCount: Object.keys(process.env).length,
     envKeys: Object.keys(process.env).sort(),
   });
