@@ -11,22 +11,21 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
+- **Validation**: Zod
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
-## ManaPick (Streamlit)
+## ManaPick
 
-- `app.py` — Streamlit app for picking MTG orders from Manapool, sorted by physical-box order, enriched via Scryfall.
-- Run via the `Start application` workflow (`streamlit run app.py --server.port 5000`).
+- `artifacts/accounting` — React pick-and-pack app.
+- `artifacts/api-server` — Express API for Manapool OAuth, orders, enrichment, and shipping.
+- Run via the `Start application` workflow (API on port 8080, frontend on port 5173).
 
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

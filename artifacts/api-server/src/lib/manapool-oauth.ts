@@ -1,7 +1,12 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import type { Request, Response } from "express";
-import { db, manapoolOAuthConnectionsTable } from "@workspace/db";
 import {
   DisconnectManapickResponse,
   GetManapickConnectionStatusResponse,
@@ -10,7 +15,12 @@ import {
 const AUTHORIZATION_ENDPOINT = "https://auth.manapool.com/oauth2/auth";
 const TOKEN_ENDPOINT = "https://auth.manapool.com/oauth2/token";
 const SESSION_COOKIE = "manapick_sid";
+const COOKIE_VERSION = "v1";
 const STATE_TTL_MS = 10 * 60 * 1000;
+const MAX_TOKEN_LIFETIME_S = 60 * 60;
+// Browsers reject cookies larger than about 4 KB (name, value and attributes).
+const MAX_COOKIE_VALUE_LENGTH = 3800;
+const MIN_SECRET_LENGTH = 32;
 const REQUESTED_SCOPES = ["orders:read", "orders:write"] as const;
 
 type OAuthTokenResponse = {
@@ -20,32 +30,144 @@ type OAuthTokenResponse = {
   error?: unknown;
 };
 
+type PendingAuthorization = {
+  state: string;
+  codeVerifier: string;
+  redirectUri: string;
+  expiresAt: number;
+};
+
+type ManapoolConnection = {
+  accessToken: string;
+  expiresAt: number;
+  scopes: string;
+};
+
+type CookieSession = {
+  pending?: PendingAuthorization;
+  connection?: ManapoolConnection;
+};
+
+let cachedKey: { secret: string; key: Buffer } | null = null;
+
+function getEncryptionKey(): Buffer | null {
+  const secret = process.env["COOKIE_ENCRYPTION_KEY"]?.trim();
+  if (!secret || secret.length < MIN_SECRET_LENGTH) return null;
+  if (cachedKey?.secret !== secret) {
+    const key = Buffer.from(
+      hkdfSync("sha256", secret, "", "manapick-session-cookie", 32),
+    );
+    cachedKey = { secret, key };
+  }
+  return cachedKey.key;
+}
+
 function getClientCredentials() {
   const clientId = process.env["MANAPOOL_CLIENT_ID"]?.trim();
   const clientSecret = process.env["MANAPOOL_CLIENT_SECRET"]?.trim();
-  if (!clientId || !clientSecret) return null;
+  if (!clientId || !clientSecret || !getEncryptionKey()) return null;
   return { clientId, clientSecret };
 }
 
-function sessionIdFromRequest(req: Request): string | null {
+function encryptSession(session: CookieSession, key: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(`${SESSION_COOKIE}.${COOKIE_VERSION}`));
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(session), "utf8"),
+    cipher.final(),
+  ]);
+  const payload = Buffer.concat([iv, ciphertext, cipher.getAuthTag()]);
+  return `${COOKIE_VERSION}.${payload.toString("base64url")}`;
+}
+
+function decryptSession(value: string, key: Buffer): CookieSession | null {
+  const [version, encoded] = value.split(".", 2);
+  if (version !== COOKIE_VERSION || !encoded) return null;
+  try {
+    const payload = Buffer.from(encoded, "base64url");
+    if (payload.length < 12 + 16 + 1) return null;
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      key,
+      payload.subarray(0, 12),
+    );
+    decipher.setAAD(Buffer.from(`${SESSION_COOKIE}.${COOKIE_VERSION}`));
+    decipher.setAuthTag(payload.subarray(payload.length - 16));
+    const plaintext = Buffer.concat([
+      decipher.update(payload.subarray(12, payload.length - 16)),
+      decipher.final(),
+    ]).toString("utf8");
+    return parseSession(JSON.parse(plaintext));
+  } catch {
+    return null;
+  }
+}
+
+function parseSession(raw: unknown): CookieSession | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { pending, connection } = raw as Record<string, unknown>;
+  const session: CookieSession = {};
+
+  if (pending && typeof pending === "object") {
+    const p = pending as Record<string, unknown>;
+    if (
+      typeof p["state"] === "string" &&
+      typeof p["codeVerifier"] === "string" &&
+      typeof p["redirectUri"] === "string" &&
+      typeof p["expiresAt"] === "number"
+    ) {
+      session.pending = {
+        state: p["state"],
+        codeVerifier: p["codeVerifier"],
+        redirectUri: p["redirectUri"],
+        expiresAt: p["expiresAt"],
+      };
+    }
+  }
+
+  if (connection && typeof connection === "object") {
+    const c = connection as Record<string, unknown>;
+    if (
+      typeof c["accessToken"] === "string" &&
+      typeof c["expiresAt"] === "number" &&
+      typeof c["scopes"] === "string"
+    ) {
+      session.connection = {
+        accessToken: c["accessToken"],
+        expiresAt: c["expiresAt"],
+        scopes: c["scopes"],
+      };
+    }
+  }
+
+  return session;
+}
+
+function readSession(req: Request): CookieSession | null {
   const value = req.cookies?.[SESSION_COOKIE];
-  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
-    ? value
-    : null;
+  const key = getEncryptionKey();
+  if (typeof value !== "string" || !key) return null;
+  return decryptSession(value, key);
+}
+
+function hasSessionCookie(req: Request): boolean {
+  return typeof req.cookies?.[SESSION_COOKIE] === "string";
 }
 
 function secureCookieRequest(req: Request): boolean {
-  return req.secure;
+  return req.secure || process.env["NODE_ENV"] === "production";
 }
 
 function getRedirectUri(req: Request): string {
   const configured = process.env["MANAPOOL_REDIRECT_URI"]?.trim();
   if (configured) {
     const url = new URL(configured);
-    if (url.protocol !== "https:") {
-      throw new Error("MANAPOOL_REDIRECT_URI must use HTTPS.");
+    const isLocalhost = ["localhost", "127.0.0.1"].includes(url.hostname);
+    if (url.protocol === "https:" || (url.protocol === "http:" && isLocalhost)) {
+      return url.toString();
     }
-    return url.toString();
+    throw new Error("MANAPOOL_REDIRECT_URI must use HTTPS.");
   }
 
   const protocol = req.secure ? "https" : "http";
@@ -98,15 +220,6 @@ function getRedirectUri(req: Request): string {
   return new URL("/api/manapick/oauth/callback", url).toString();
 }
 
-function setSessionCookie(res: Response, req: Request, sessionId: string): void {
-  res.cookie(SESSION_COOKIE, sessionId, {
-    httpOnly: true,
-    secure: secureCookieRequest(req),
-    sameSite: "lax",
-    path: "/",
-  });
-}
-
 function clearSessionCookie(res: Response, req: Request): void {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
@@ -114,6 +227,46 @@ function clearSessionCookie(res: Response, req: Request): void {
     sameSite: "lax",
     path: "/",
   });
+}
+
+function writeSessionCookie(
+  res: Response,
+  req: Request,
+  session: CookieSession,
+): void {
+  const key = getEncryptionKey();
+  const now = Date.now();
+  const expiresAt = Math.max(
+    session.pending && session.pending.expiresAt > now
+      ? session.pending.expiresAt
+      : 0,
+    session.connection && session.connection.expiresAt > now
+      ? session.connection.expiresAt
+      : 0,
+  );
+  if (!key || expiresAt === 0) {
+    clearSessionCookie(res, req);
+    return;
+  }
+
+  const value = encryptSession(session, key);
+  if (value.length > MAX_COOKIE_VALUE_LENGTH) {
+    throw new Error("Manapool session is too large to store in a cookie.");
+  }
+  res.cookie(SESSION_COOKIE, value, {
+    httpOnly: true,
+    secure: secureCookieRequest(req),
+    sameSite: "lax",
+    path: "/",
+    maxAge: expiresAt - now,
+  });
+}
+
+function activeConnection(
+  session: CookieSession | null,
+): ManapoolConnection | null {
+  const connection = session?.connection;
+  return connection && connection.expiresAt > Date.now() ? connection : null;
 }
 
 function queryString(req: Request, key: string): string | null {
@@ -134,17 +287,14 @@ function redirectWithError(res: Response, error: string): void {
   res.redirect(302, `/?manapool_error=${encodeURIComponent(error)}`);
 }
 
-async function clearPendingState(sessionId: string): Promise<void> {
-  await db
-    .update(manapoolOAuthConnectionsTable)
-    .set({
-      oauthState: null,
-      codeVerifier: null,
-      redirectUri: null,
-      stateExpiresAt: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
+function clearPendingState(
+  res: Response,
+  req: Request,
+  session: CookieSession | null,
+): void {
+  writeSessionCookie(res, req, {
+    connection: activeConnection(session) ?? undefined,
+  });
 }
 
 export async function beginManapoolOAuth(
@@ -158,37 +308,22 @@ export async function beginManapoolOAuth(
   }
 
   try {
-    const sessionId =
-      sessionIdFromRequest(req) ?? randomBytes(32).toString("hex");
     const state = randomBytes(32).toString("base64url");
     const codeVerifier = randomBytes(32).toString("base64url");
     const codeChallenge = createHash("sha256")
       .update(codeVerifier)
       .digest("base64url");
     const redirectUri = getRedirectUri(req);
-    const stateExpiresAt = new Date(Date.now() + STATE_TTL_MS);
 
-    setSessionCookie(res, req, sessionId);
-
-    await db
-      .insert(manapoolOAuthConnectionsTable)
-      .values({
-        sessionId,
-        oauthState: state,
+    writeSessionCookie(res, req, {
+      pending: {
+        state,
         codeVerifier,
         redirectUri,
-        stateExpiresAt,
-      })
-      .onConflictDoUpdate({
-        target: manapoolOAuthConnectionsTable.sessionId,
-        set: {
-          oauthState: state,
-          codeVerifier,
-          redirectUri,
-          stateExpiresAt,
-          updatedAt: new Date(),
-        },
-      });
+        expiresAt: Date.now() + STATE_TTL_MS,
+      },
+      connection: activeConnection(readSession(req)) ?? undefined,
+    });
 
     const authorizationUrl = new URL(AUTHORIZATION_ENDPOINT);
     authorizationUrl.searchParams.set("response_type", "code");
@@ -213,37 +348,31 @@ export async function completeManapoolOAuth(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const sessionId = sessionIdFromRequest(req);
+  const session = readSession(req);
   const state = queryString(req, "state");
   const code = queryString(req, "code");
 
-  if (!sessionId || !state) {
+  if (!session || !state) {
+    if (hasSessionCookie(req) && !session) clearSessionCookie(res, req);
     redirectWithError(res, "invalid_state");
     return;
   }
 
   try {
-    const [connection] = await db
-      .select()
-      .from(manapoolOAuthConnectionsTable)
-      .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
-
+    const pending = session.pending;
     if (
-      !connection?.oauthState ||
-      !connection.codeVerifier ||
-      !connection.redirectUri ||
-      !connection.stateExpiresAt ||
-      connection.stateExpiresAt.getTime() < Date.now() ||
-      !constantTimeEqual(connection.oauthState, state)
+      !pending ||
+      pending.expiresAt < Date.now() ||
+      !constantTimeEqual(pending.state, state)
     ) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       redirectWithError(res, "invalid_state");
       return;
     }
 
     const providerError = queryString(req, "error");
     if (providerError) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       redirectWithError(
         res,
         providerError === "access_denied"
@@ -256,14 +385,14 @@ export async function completeManapoolOAuth(
     }
 
     if (!code) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       redirectWithError(res, "connect_failed");
       return;
     }
 
     const credentials = getClientCredentials();
     if (!credentials) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       redirectWithError(res, "not_configured");
       return;
     }
@@ -280,8 +409,8 @@ export async function completeManapoolOAuth(
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: connection.redirectUri,
-        code_verifier: connection.codeVerifier,
+        redirect_uri: pending.redirectUri,
+        code_verifier: pending.codeVerifier,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -290,7 +419,7 @@ export async function completeManapoolOAuth(
       .json()
       .catch(() => ({}))) as OAuthTokenResponse;
     if (!response.ok) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       req.log.warn(
         { status: response.status },
         "Manapool OAuth token exchange failed",
@@ -308,7 +437,7 @@ export async function completeManapoolOAuth(
         : null;
     const expiresIn = Number(tokenBody.expires_in);
     if (!accessToken || !Number.isFinite(expiresIn) || expiresIn <= 0) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       req.log.warn("Manapool OAuth returned an invalid token response");
       redirectWithError(res, "connect_failed");
       return;
@@ -320,26 +449,19 @@ export async function completeManapoolOAuth(
         : REQUESTED_SCOPES.join(" ");
     const grantedScopes = scopes.split(/\s+/).filter(Boolean);
     if (REQUESTED_SCOPES.some((scope) => !grantedScopes.includes(scope))) {
-      await clearPendingState(sessionId);
+      clearPendingState(res, req, session);
       redirectWithError(res, "invalid_scope");
       return;
     }
 
-    await db
-      .update(manapoolOAuthConnectionsTable)
-      .set({
+    writeSessionCookie(res, req, {
+      connection: {
         accessToken,
-        tokenExpiresAt: new Date(
-          Date.now() + Math.min(expiresIn, 60 * 60) * 1000,
-        ),
+        expiresAt:
+          Date.now() + Math.min(expiresIn, MAX_TOKEN_LIFETIME_S) * 1000,
         scopes,
-        oauthState: null,
-        codeVerifier: null,
-        redirectUri: null,
-        stateExpiresAt: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
+      },
+    });
 
     res.redirect(302, "/?manapool_connected=1");
   } catch (error) {
@@ -356,76 +478,37 @@ export async function getManapoolConnectionStatus(
   res: Response,
 ): Promise<void> {
   res.set("Cache-Control", "no-store");
-  const sessionId = sessionIdFromRequest(req);
-  if (!sessionId) {
-    res.json({ connected: false, scopes: [], expiresAt: null });
-    return;
-  }
+  const session = readSession(req);
+  const connection = activeConnection(session);
 
-  const [connection] = await db
-    .select()
-    .from(manapoolOAuthConnectionsTable)
-    .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
-
-  const connected = Boolean(
-    connection?.accessToken &&
-      connection.tokenExpiresAt &&
-      connection.tokenExpiresAt.getTime() > Date.now(),
+  const pendingActive = Boolean(
+    session?.pending && session.pending.expiresAt > Date.now(),
   );
-
-  if (!connected && connection?.tokenExpiresAt) {
-    await db
-      .delete(manapoolOAuthConnectionsTable)
-      .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
+  if (!connection && !pendingActive && hasSessionCookie(req)) {
     clearSessionCookie(res, req);
-  } else if (
-    connection?.stateExpiresAt &&
-    connection.stateExpiresAt.getTime() <= Date.now()
-  ) {
-    await clearPendingState(sessionId);
+  } else if (connection && session?.pending && !pendingActive) {
+    clearPendingState(res, req, session);
   }
 
   res.json(GetManapickConnectionStatusResponse.parse({
-    connected,
-    scopes: connected
+    connected: Boolean(connection),
+    scopes: connection
       ? connection.scopes.split(/\s+/).filter(Boolean)
       : [],
-    expiresAt: connected ? connection.tokenExpiresAt : null,
+    expiresAt: connection ? new Date(connection.expiresAt) : null,
   }));
 }
 
 export async function getManapoolAccessToken(
   req: Request,
 ): Promise<string | null> {
-  const sessionId = sessionIdFromRequest(req);
-  if (!sessionId) return null;
-
-  const [connection] = await db
-    .select()
-    .from(manapoolOAuthConnectionsTable)
-    .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
-
-  if (
-    !connection?.accessToken ||
-    !connection.tokenExpiresAt ||
-    connection.tokenExpiresAt.getTime() <= Date.now()
-  ) {
-    return null;
-  }
-
-  return connection.accessToken;
+  return activeConnection(readSession(req))?.accessToken ?? null;
 }
 
 export async function disconnectManapool(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const sessionId = sessionIdFromRequest(req);
-  if (sessionId) {
-    await db
-      .delete(manapoolOAuthConnectionsTable)
-      .where(eq(manapoolOAuthConnectionsTable.sessionId, sessionId));
-  }
   clearSessionCookie(res, req);
   res.json(
     DisconnectManapickResponse.parse({

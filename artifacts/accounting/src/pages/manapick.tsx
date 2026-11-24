@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, Package, ShoppingBag, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Layout } from "@/components/layout";
+import { ManapoolKeyPanel } from "@/components/manapool-key-panel";
 import { formatRelativeTime } from "./manapick/utils";
 import { PickView } from "./manapick/PickView";
 import { PackView } from "./manapick/PackView";
@@ -32,111 +34,164 @@ export default function ManaPick({
 
   if (checking) {
     return (
-      <div className="flex min-h-56 items-center gap-3 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span>Checking Manapool connection…</span>
-      </div>
+      <Layout header={<AccountMenu checking connected={false} onDisconnect={onDisconnect} />}>
+        <div className="flex min-h-56 items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span>Checking Manapool connection…</span>
+        </div>
+      </Layout>
     );
   }
 
   if (!connected) {
     return (
-      <div className="space-y-6 max-w-screen-xl">
-        {connectionError && (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            {connectionError}
-          </div>
-        )}
-        <div>
-          <h1 className="text-2xl font-bold">ManaPick</h1>
-          <p className="text-sm text-muted-foreground">
-            Pick and pack Manapool orders without Replit sign-in.
-          </p>
-        </div>
-        <div className="max-w-xl rounded-xl border bg-card p-6 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-              <KeyRound size={19} />
+      <Layout header={<AccountMenu checking={false} connected={false} onDisconnect={onDisconnect} />}>
+        <div className="max-w-xl">
+          {connectionError && (
+            <div
+              role="alert"
+              className="mb-6 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {connectionError}
             </div>
-            <div className="space-y-1">
-              <h2 className="font-semibold">Connect your Manapool account</h2>
-              <p className="text-sm text-muted-foreground">
-                Authorize ManaPick to read your seller orders and mark them shipped.
-                The connection lasts for this browser session or until the access
-                token expires.
-              </p>
+          )}
+          <div className="rounded-xl border bg-card p-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <KeyRound size={19} />
+              </div>
+              <div className="space-y-1">
+                <h2 className="font-semibold">Connect your Manapool account</h2>
+                <p className="text-sm text-muted-foreground">
+                  Authorize ManaPick to read your seller orders and mark them shipped.
+                  The connection lasts for this browser session or until the access
+                  token expires.
+                </p>
+              </div>
             </div>
+            <Button asChild className="mt-5">
+              <a href="/api/manapick/oauth/start">
+                <KeyRound className="mr-2 h-4 w-4" />
+                Connect with Manapool
+              </a>
+            </Button>
           </div>
-          <Button asChild className="mt-5">
-            <a href="/api/manapick/oauth/start">
-            <KeyRound className="mr-2 h-4 w-4" />
-              Connect with Manapool
-            </a>
-          </Button>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
     <OrdersProvider onAccessExpired={onAccessExpired}>
-      <ManaPickInner onDisconnect={onDisconnect} />
+      <Layout header={<ConnectedControls onDisconnect={onDisconnect} />}>
+        <ManaPickBody />
+      </Layout>
     </OrdersProvider>
   );
 }
 
-function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
+function AccountMenu({
+  connected,
+  checking,
+  onDisconnect,
+}: {
+  connected: boolean;
+  checking: boolean;
+  onDisconnect: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ml-auto">
+      <ManapoolKeyPanel
+        connected={connected}
+        checking={checking}
+        open={open}
+        onOpenChange={setOpen}
+        onDisconnect={onDisconnect}
+      />
+    </div>
+  );
+}
+
+function ConnectedControls({ onDisconnect }: { onDisconnect: () => void }) {
+  const { phase, setPhase, fetchOrders, loading, isEmpty } = useOrders();
+
+  const phases = [
+    { id: "pick" as const, label: "Pick", icon: ShoppingBag },
+    { id: "pack" as const, label: "Pack & Ship", icon: Package },
+  ];
+
+  return (
+    <>
+      <nav
+        aria-label="Workflow"
+        className="order-3 flex w-full items-stretch gap-1 self-stretch md:order-none md:w-auto"
+      >
+        {phases.map(({ id, label, icon: Icon }) => {
+          const active = phase === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => setPhase(id)}
+              className={`inline-flex items-center gap-1.5 border-b-2 px-3 text-sm font-medium transition-colors ${
+                active
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {label}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="ml-auto flex items-center gap-2">
+        <Button onClick={fetchOrders} disabled={loading} size="sm">
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          <span className="ml-1">
+            {loading ? "Fetching…" : isEmpty ? "Fetch orders" : "Refresh"}
+          </span>
+        </Button>
+        <AccountMenu checking={false} connected onDisconnect={onDisconnect} />
+      </div>
+    </>
+  );
+}
+
+function ManaPickBody() {
   const {
-    fetchOrders, loading, isEmpty, cachedAt,
+    loading, isEmpty, cachedAt,
     clearAll, error,
     isEnriching, enrichProgress,
     master, totalCards, pickedCards, orders,
-    phase, setPhase,
+    phase,
     setGroups, orderToBin, picked, togglePick,
     shipped, tracking, shipOrder, handleTrackingChange,
   } = useOrders();
 
   return (
-    <div className="space-y-6 max-w-screen-xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">ManaPick</h1>
-          <p className="text-sm text-muted-foreground">
-            Pick &amp; pack Manapool orders, sorted by set, color, and collector number
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={fetchOrders} disabled={loading} size="sm">
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span className="ml-1">
-              {loading
-                ? "Fetching…"
-                : isEmpty
-                  ? "Fetch Manapool"
-                  : "Refresh Manapool"}
-            </span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={onDisconnect}>
-            <KeyRound className="h-4 w-4 mr-1" />
-            Disconnect Manapool
-          </Button>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="text-sm text-muted-foreground">
+          {phase === "pick"
+            ? "Orders sorted by set, color, and collector number."
+            : "Pack each bin and mark the order shipped."}
+        </p>
+        <div className="flex items-center gap-3">
           {cachedAt !== null && !loading && (
             <span className="text-xs text-muted-foreground">
               Synced {formatRelativeTime(cachedAt)}
             </span>
           )}
-
           {!isEmpty && (
             <Button variant="outline" size="sm" onClick={clearAll}>
-              Clear All
+              Clear all
             </Button>
           )}
         </div>
@@ -147,6 +202,7 @@ function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
           {error}
         </div>
       )}
+
       {/* Enrichment progress */}
       {isEnriching && (
         <div className="space-y-1.5">
@@ -164,13 +220,13 @@ function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
           <ShoppingBag className="h-12 w-12 opacity-20" />
           <p className="text-sm text-center max-w-sm">
-            Click <strong>Fetch Manapool</strong> to load your paid, unshipped
+            Click <strong>Fetch orders</strong> to load your paid, unshipped
             Manapool orders.
           </p>
         </div>
       )}
 
-      {/* Metrics + phase toggle */}
+      {/* Metrics */}
       {!isEmpty && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -197,24 +253,6 @@ function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
             />
           )}
 
-          {/* Phase toggle */}
-          <div className="flex gap-2">
-            <Button
-              variant={phase === "pick" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setPhase("pick")}
-            >
-              <ShoppingBag className="h-4 w-4 mr-1" /> Pick
-            </Button>
-            <Button
-              variant={phase === "pack" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setPhase("pack")}
-            >
-              <Package className="h-4 w-4 mr-1" /> Pack &amp; Ship
-            </Button>
-          </div>
-
           {/* ── PICK VIEW ────────────────────────────────────────────────── */}
           {phase === "pick" && (
             <PickView
@@ -239,7 +277,6 @@ function ManaPickInner({ onDisconnect }: { onDisconnect: () => void }) {
           )}
         </>
       )}
-
     </div>
   );
 }

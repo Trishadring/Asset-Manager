@@ -7,6 +7,14 @@ allowBuilds:
 
 autoInstallPeers: false
 
+# TypeScript resolves `react` from declaration files inside the pnpm store.
+# Those packages do not depend on @types/react, so without a root hoist the
+# import lands on untyped react/index.js and class components fail to typecheck.
+publicHoistPattern:
+  - "*eslint*"
+  - "*prettier*"
+  - "@types/*"
+
 catalog:
   vitest: ^3.2.0
   '@testing-library/react': ^16.3.0
@@ -24,8 +32,6 @@ catalog:
   '@vitejs/plugin-react': ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
-  drizzle-orm: ^0.45.2
-  framer-motion: ^12.23.24
   lucide-react: ^0.545.0
   react: 19.1.0
   react-dom: 19.1.0
