@@ -16,59 +16,62 @@ export function ManapoolKeyPanel({
   onOpenChange,
   onDisconnect,
 }: ManapoolKeyPanelProps) {
+  const status = checking ? "Checking" : connected ? "Connected" : "Offline";
+
   return (
-    <section className="space-y-3">
+    <div className="relative">
       <button
         type="button"
         aria-expanded={open}
         aria-controls="manapool-connection-panel"
         onClick={() => onOpenChange(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-sidebar-border bg-card px-3 py-3 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
+        className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-accent"
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <KeyRound size={17} className="shrink-0 text-primary" />
-          <span className="truncate font-medium">ManaPool</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {checking ? (
-            <span className="text-xs text-muted-foreground">Checking</span>
-          ) : connected ? (
-            <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
-              <Check size={13} aria-hidden="true" />
-              Connected
-            </span>
+        <KeyRound size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span>Manapool</span>
+        <span
+          className={`inline-flex items-center gap-1 text-xs ${
+            connected && !checking ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"
+          }`}
+        >
+          {connected && !checking ? (
+            <Check size={13} aria-hidden="true" />
           ) : (
-            <span className="text-xs text-muted-foreground">Offline</span>
+            <span
+              className="h-2 w-2 rounded-full bg-muted-foreground"
+              aria-hidden="true"
+            />
           )}
-          <ChevronDown
-            size={15}
-            className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-            aria-hidden="true"
-          />
+          {status}
         </span>
+        <ChevronDown
+          size={15}
+          className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
       </button>
 
       {open && (
         <div
           id="manapool-connection-panel"
-          className="space-y-3 rounded-lg border border-sidebar-border bg-card p-3"
+          className="absolute right-0 top-full z-50 mt-2 w-64 space-y-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground"
         >
           <p className="text-xs leading-relaxed text-muted-foreground">
             {checking
               ? "Checking this browser session…"
               : connected
                 ? "Connected for this browser session. You can disconnect at any time."
-                : "Authorize ManaPick with your Manapool account for this browser session."}
+                : "Authorize with your Manapool account for this browser session."}
           </p>
           {!checking && connected ? (
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="w-full text-muted-foreground"
+              className="w-full"
               onClick={onDisconnect}
             >
-              Disconnect Manapool
+              Disconnect
             </Button>
           ) : !checking ? (
             <Button asChild size="sm" className="w-full">
@@ -80,6 +83,6 @@ export function ManapoolKeyPanel({
           ) : null}
         </div>
       )}
-    </section>
+    </div>
   );
 }

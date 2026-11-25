@@ -5,8 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
-import { Layout } from "@/components/layout";
-import { ManapoolKeyPanel } from "@/components/manapool-key-panel";
 import ManaPick from "@/pages/manapick";
 
 interface ManapoolConnection {
@@ -62,7 +60,6 @@ function ManaPickPage() {
     checking: true,
   });
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [keyPanelOpen, setKeyPanelOpen] = useState(false);
 
   const disconnect = useCallback(async (expired = false) => {
     try {
@@ -138,25 +135,13 @@ function ManaPickPage() {
   }, [connection.connected, connection.expiresAt, disconnect]);
 
   return (
-    <Layout
-      sidebarContent={
-        <ManapoolKeyPanel
-          connected={connection.connected}
-          checking={connection.checking}
-          open={keyPanelOpen}
-          onOpenChange={setKeyPanelOpen}
-          onDisconnect={disconnect}
-        />
-      }
-    >
-      <ManaPick
-        connected={connection.connected}
-        checking={connection.checking}
-        connectionError={connectionError}
-        onDisconnect={disconnect}
-        onAccessExpired={handleAccessExpired}
-      />
-    </Layout>
+    <ManaPick
+      connected={connection.connected}
+      checking={connection.checking}
+      connectionError={connectionError}
+      onDisconnect={disconnect}
+      onAccessExpired={handleAccessExpired}
+    />
   );
 }
 

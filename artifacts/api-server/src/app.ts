@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
-import { authMiddleware } from "./middlewares/authMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -50,7 +49,6 @@ app.use(cors({
 }));
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
-app.use(authMiddleware);
 
 app.use("/api", router);
 
@@ -58,9 +56,26 @@ app.use("/api", router);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const accountingDist = path.resolve(__dirname, "../../accounting/dist/public");
 
+app.use(express.static(accountingDist, { index: false }));
 app.use("/accounting", express.static(accountingDist, { index: false }));
-app.get("/accounting/*splat", (_req, res) => {
-  res.sendFile(path.join(accountingDist, "index.html"));
+app.use((req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    next();
+    return;
+  }
+  if (req.path.startsWith("/api")) {
+    next();
+    return;
+  }
+  // Missing static files (anything with an extension) should 404 rather than
+  // receive index.html.
+  if (path.extname(req.path)) {
+    next();
+    return;
+  }
+  res.sendFile(path.join(accountingDist, "index.html"), (err) => {
+    if (err) next();
+  });
 });
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

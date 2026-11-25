@@ -1,3 +1,4 @@
+import "./load-env";
 import app from "./app";
 import { logger } from "./lib/logger";
 
@@ -21,11 +22,5 @@ app.listen(port, (err) => {
     process.exit(1);
   }
 
-  const envKeys = Object.keys(process.env).sort();
-  logger.info({
-    port,
-    hasManapool: !!(process.env["MANAPOOL_EMAIL"] && process.env["MANAPOOL_API_KEY"]),
-    hasSession: !!process.env["SESSION_SECRET"],
-    envKeys,
-  }, "Server listening");
+  logger.info({ port }, "Server listening");
 });

@@ -1,3 +1,0 @@
-- [Static artifact deep links](static-artifact-deep-links.md) — use per-artifact production rewrites for SPA deep links in pnpm workspaces.
-- [ManaPick standalone shell](manapick-shell.md) — preserve ManaPick's theme and content padding without restoring Accounting navigation.
-- [Orval YAML compatibility](orval-yaml-compatibility.md) — keep Orval's js-yaml resolution on the compatible 4.x line; 5.x breaks its default import.

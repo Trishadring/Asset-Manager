@@ -9,8 +9,6 @@ After finishing each story:
 6. `git add` the relevant files
 7. `git commit` with the story number and a concise description
 
-Currently there are no test files or test framework in the project.
-
 > **Node.js version:** Both apps require Node >= 20.19. Use `nvm` to switch if needed:
 > ```
 > source ~/.nvm/nvm.sh && nvm use 22.22.2
@@ -19,11 +17,12 @@ Currently there are no test files or test framework in the project.
 # Starting the Apps
 
 ## API Server (port 8080)
-Requires `DATABASE_URL` (Postgres). After building:
+Does not use a database. After building:
 ```bash
 # From artifacts/api-server/
-DATABASE_URL="postgresql://..." node --enable-source-maps dist/index.mjs
+node --enable-source-maps dist/index.mjs
 ```
+`PORT` is required. `COOKIE_ENCRYPTION_KEY` is required for the Manapool connection cookie.
 
 ## Accounting App (port 5173)
 Requires `PORT` and `BASE_PATH` env vars:
@@ -39,14 +38,11 @@ Proxies `/api/*` to `localhost:8080` by default (override with `API_PROXY_TARGET
 - Server starts: `node --enable-source-maps dist/index.mjs` responds
 - Health check: `GET /api/healthz` returns 200
 - CORS: Requests from Accounting origin (localhost:5173) are allowed
-- Routes load: manapick, orders, ebay, tcgplayer, dashboard, auth all functional
+- Routes load: Manapool OAuth, orders, sets, enrich, and ship
 
 ## Accounting App (:5173)
 - ManaPick (root `/`): page renders, can fetch/pick/pack orders
-- Dashboard: weekly stats graph loads
-- Login/auth flow works via Replit auth
 
 ## Shared Infrastructure
 - `@workspace/api-zod` types compile correctly
-- `@workspace/db` schema/sync commands work
 - `pnpm-workspace.yaml` catalog pins are consistent
